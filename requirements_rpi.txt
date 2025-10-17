@@ -1,0 +1,11 @@
+# Requirements for Raspberry Pi 3 (32-bit OS)
+# Install with: pip3 install -r requirements_rpi.txt
+
+vosk>=0.3.45
+sounddevice>=0.4.6
+google-generativeai>=0.8.0
+pyttsx3>=2.90
+
+# Optional: ReSpeaker hardware library
+# Install separately if you have ReSpeaker 2-Mic or 4-Mic Array:
+# pip3 install respeaker
