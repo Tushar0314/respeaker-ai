@@ -7,17 +7,28 @@
 
 ## Software Installation
 
-### 1. System Dependencies
+### 1. System Dependencies (IMPORTANT - Install these FIRST!)
 ```bash
 # Update system
 sudo apt-get update
-sudo apt-get upgrade
+sudo apt-get upgrade -y
 
-# Install audio tools
-sudo apt-get install -y espeak portaudio19-dev python3-pip python3-dev
+# Install audio and build tools (REQUIRED for sounddevice)
+sudo apt-get install -y \
+    espeak \
+    portaudio19-dev \
+    python3-pip \
+    python3-dev \
+    python3-pyaudio \
+    libasound2-dev \
+    libportaudio2 \
+    libportaudiocpp0 \
+    ffmpeg \
+    alsa-utils \
+    build-essential
 
-# Install ALSA utilities (for ReSpeaker)
-sudo apt-get install -y alsa-utils
+# Verify portaudio is installed
+pkg-config --modversion portaudio-2.0
 ```
 
 ### 2. Python Dependencies
@@ -26,8 +37,20 @@ sudo apt-get install -y alsa-utils
 python3 -m venv venv
 source venv/bin/activate
 
-# Install Python packages
+# Upgrade pip first
+pip3 install --upgrade pip setuptools wheel
+
+# Install Python packages one by one to see any errors
+pip3 install vosk
+pip3 install sounddevice
+pip3 install google-generativeai
+pip3 install pyttsx3
+
+# Or install all at once
 pip3 install -r requirements_rpi.txt
+
+# Verify sounddevice installation
+python3 -c "import sounddevice as sd; print('sounddevice version:', sd.__version__); print(sd.query_devices())"
 ```
 
 ### 3. Download Vosk Model
@@ -104,6 +127,41 @@ sudo systemctl status voice-assistant.service
 ```
 
 ## Troubleshooting
+
+### "No module named sounddevice" Error
+This is the most common error. Fix it by:
+
+```bash
+# 1. Install system dependencies FIRST
+sudo apt-get install -y portaudio19-dev libasound2-dev libportaudio2 libportaudiocpp0
+
+# 2. If in virtual environment, activate it
+source venv/bin/activate
+
+# 3. Reinstall sounddevice
+pip3 uninstall sounddevice -y
+pip3 install sounddevice --no-cache-dir
+
+# 4. Test it
+python3 -c "import sounddevice; print('Success!')"
+```
+
+If still failing:
+```bash
+# Try installing system-wide (outside venv)
+deactivate  # Exit virtual environment
+sudo pip3 install sounddevice
+python3 -c "import sounddevice; print('Success!')"
+```
+
+### "No module named _portaudio" Error
+```bash
+# Install portaudio development files
+sudo apt-get install -y portaudio19-dev python3-pyaudio
+
+# Reinstall sounddevice
+pip3 install --force-reinstall sounddevice
+```
 
 ### No Audio Output
 ```bash

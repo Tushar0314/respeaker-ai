@@ -1,0 +1,123 @@
+COMPLETE RASPBERRY PI INSTALLATION GUIDE
+=========================================
+
+COPY AND PASTE THESE COMMANDS ONE BY ONE INTO YOUR RASPBERRY PI TERMINAL:
+
+-----------------------------------
+STEP 1: Navigate to project folder
+-----------------------------------
+cd ~/respeaker-ai
+
+
+-----------------------------------
+STEP 2: Exit any virtual environment
+-----------------------------------
+deactivate
+
+
+-----------------------------------
+STEP 3: Install system dependencies (MOST IMPORTANT!)
+-----------------------------------
+sudo apt-get update
+
+sudo apt-get install -y espeak portaudio19-dev libasound2-dev libportaudio2 libportaudiocpp0 libffi-dev python3-pip python3-dev python3-pyaudio python3.11 python3.11-venv python3.11-dev ffmpeg alsa-utils build-essential wget unzip
+
+
+-----------------------------------
+STEP 4: Remove old broken virtual environment
+-----------------------------------
+rm -rf venv
+
+
+-----------------------------------
+STEP 5: Create NEW virtual environment with Python 3.11
+-----------------------------------
+python3.11 -m venv venv
+
+
+-----------------------------------
+STEP 6: Activate virtual environment
+-----------------------------------
+source venv/bin/activate
+
+
+-----------------------------------
+STEP 7: Upgrade pip
+-----------------------------------
+pip3 install --upgrade pip setuptools wheel
+
+
+-----------------------------------
+STEP 8: Install Python packages (one by one)
+-----------------------------------
+pip3 install cffi
+
+pip3 install sounddevice
+
+pip3 install vosk
+
+pip3 install google-generativeai
+
+pip3 install pyttsx3
+
+
+-----------------------------------
+STEP 9: Test if everything works
+-----------------------------------
+python3 -c "import sounddevice; import vosk; import google.generativeai; print('SUCCESS!')"
+
+
+-----------------------------------
+STEP 10: Run the voice assistant!
+-----------------------------------
+python3 hello_ai_rpi.py
+
+
+=========================================
+ALTERNATIVE: USE AUTOMATED INSTALLER
+=========================================
+
+If you want everything done automatically:
+
+chmod +x install_rpi.sh
+bash install_rpi.sh
+
+
+=========================================
+IF YOU GET ERRORS:
+=========================================
+
+Error: "No module named sounddevice"
+Fix: Make sure you installed portaudio19-dev BEFORE installing sounddevice
+
+Error: "cannot load library libvosk.so"
+Fix: Use Python 3.11 instead of 3.13 (Step 5 above)
+
+Error: "externally-managed-environment"
+Fix: DON'T use sudo with pip3 when inside venv (Step 8)
+
+Error: "No such file or directory" for pip3
+Fix: Delete venv and recreate it (Steps 4-6)
+
+
+=========================================
+QUICK CHECK: Are you in the right place?
+=========================================
+
+Run these to verify:
+pwd                    # Should show: /home/respeacker/respeaker-ai
+ls                     # Should show: hello_ai_rpi.py, models/, etc.
+which python3          # Should show: .../venv/bin/python3
+
+
+=========================================
+DONE!
+=========================================
+
+After running hello_ai_rpi.py, it will:
+1. Find your ReSpeaker microphone
+2. Connect to Gemini AI
+3. Start listening for your voice
+4. Respond with AI-generated speech
+
+Press Ctrl+C to stop the voice assistant.
