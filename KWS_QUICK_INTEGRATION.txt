@@ -1,0 +1,296 @@
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  QUICK START: Add These Lines to Your hello_ai.py                          ║
+# ║  File: KWS_QUICK_INTEGRATION.txt                                            ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+
+# STEP 1: Add imports at the TOP of hello_ai.py
+# ═══════════════════════════════════════════════════════════════════════════
+# ADD THESE THREE LINES after existing imports:
+
+from keyword_spotter import MultiKeywordSpotter
+import numpy as np
+import threading
+
+
+# STEP 2: Create setup function BEFORE main loop
+# ═══════════════════════════════════════════════════════════════════════════
+# ADD THIS FUNCTION before the audio processing loop:
+
+def initialize_keyword_spotters():
+    """Initialize KWS models for WHERE and SPEED keywords"""
+    kws = MultiKeywordSpotter()
+    try:
+        kws.add_spotter('where', 'models/kws/where.tflite', threshold=0.85)
+    except:
+        print("⚠️  WHERE model not found at models/kws/where.tflite")
+    
+    try:
+        kws.add_spotter('speed', 'models/kws/speed.tflite', threshold=0.85)
+    except:
+        print("⚠️  SPEED model not found at models/kws/speed.tflite")
+    
+    return kws
+
+
+# STEP 3: Modify the main audio stream loop
+# ═══════════════════════════════════════════════════════════════════════════
+# CHANGE THIS:
+#
+#  with sd.InputStream(device=MIC_INDEX, samplerate=RATE, channels=1, blocksize=4096):
+#      recognizer = KaldiRecognizer(model, RATE)
+#      recognizer.SetWords(wlist)
+#      print("Listening...")
+#      while True:
+#          data = q.get()
+#          if recognizer.AcceptWaveform(data):
+#              result = json.loads(recognizer.Result())
+
+
+# TO THIS:
+#
+#  with sd.InputStream(device=MIC_INDEX, samplerate=RATE, channels=1, blocksize=4096):
+#      recognizer = KaldiRecognizer(model, RATE)
+#      recognizer.SetWords(wlist)
+#      
+#      # ← ADD THIS SECTION ←
+#      kws_detector = initialize_keyword_spotters()
+#      print("🎤 Listening for 'WHERE' and 'SPEED'...")
+#      # ← END NEW SECTION ←
+#      
+#      while True:
+#          data = q.get()
+#          
+#          # ← ADD THIS SECTION ←
+#          # Convert audio for KWS
+#          try:
+#              audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+#              detected = kws_detector.detect_any(audio_array)
+#              if not detected and kws_detector.spotters:
+#                  continue  # Skip Vosk if keyword not detected (optional optimization)
+#          except Exception as e:
+#              print(f"KWS error: {e}")
+#          # ← END NEW SECTION ←
+#          
+#          if recognizer.AcceptWaveform(data):
+#              result = json.loads(recognizer.Result())
+
+
+# STEP 4: Prepare your model files
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Run these terminal commands:
+#
+#   # Create KWS directory
+#   mkdir -p /Users/tusharbhaliya/Desktop/AI/respeaker-ai/models/kws
+#
+#   # Option A: Clone KWS-DS-CNN repo
+#   git clone https://github.com/PeterMS123/KWS-DS-CNN-for-embedded.git /tmp/kws
+#   
+#   # Option B: Download pre-trained models (if available)
+#   # curl -o models/kws/where.tflite [model-url]
+#   # curl -o models/kws/speed.tflite [model-url]
+
+
+# STEP 5: Install dependencies
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Terminal command:
+#   pip install tensorflow numpy
+# OR lightweight version for Raspberry Pi:
+#   pip install tflite-runtime numpy
+
+
+# STEP 6: Test it!
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Terminal command:
+#   python hello_ai.py
+#
+# Then say "WHERE" or "SPEED" near the microphone
+# You should see: "🎤 WHERE detected!" or similar
+
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  COMPLETE MINIMAL EXAMPLE                                                  ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+
+MINIMAL_EXAMPLE = """
+# This is a complete minimal example showing full integration
+
+import json, queue
+import sounddevice as sd
+from vosk import Model, KaldiRecognizer
+import pyttsx3
+import numpy as np
+import google.generativeai as genai
+from keyword_spotter import MultiKeywordSpotter
+
+# Configuration
+MIC_INDEX = 0  # Change this to your mic
+RATE = 16000
+MODEL_DIR = "models/en"
+GEMINI_API_KEY = 'YOUR_API_KEY'
+
+# Queue for audio data
+q = queue.Queue()
+
+def audio_callback(indata, frames, time, status):
+    q.put(bytes(indata))
+
+def initialize_keyword_spotters():
+    kws = MultiKeywordSpotter()
+    try:
+        kws.add_spotter('where', 'models/kws/where.tflite', threshold=0.85)
+        kws.add_spotter('speed', 'models/kws/speed.tflite', threshold=0.85)
+    except Exception as e:
+        print(f"⚠️  Could not load KWS models: {e}")
+    return kws
+
+def main():
+    # Initialize Vosk
+    model = Model(MODEL_DIR)
+    recognizer = KaldiRecognizer(model, RATE)
+    
+    # Initialize KWS
+    kws_detector = initialize_keyword_spotters()
+    
+    # Initialize Gemini
+    genai.configure(api_key=GEMINI_API_KEY)
+    ai_model = genai.GenerativeModel('gemini-pro')
+    
+    # Initialize TTS
+    tts_engine = pyttsx3.init()
+    
+    print("🎤 Listening for 'WHERE' and 'SPEED'...")
+    
+    with sd.InputStream(device=MIC_INDEX, samplerate=RATE, channels=1, 
+                       blocksize=4096, callback=audio_callback):
+        while True:
+            data = q.get()
+            
+            # Keyword spotting
+            audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+            detected_keyword = kws_detector.detect_any(audio_array)
+            
+            if not detected_keyword:
+                continue  # Skip Vosk if no keyword (optional)
+            
+            # Vosk speech recognition
+            if recognizer.AcceptWaveform(data):
+                result = json.loads(recognizer.Result())
+                text_list = result.get("result", [])
+                
+                if text_list:
+                    user_text = ' '.join(text_list)
+                    print(f"🗣️  You said: {user_text}")
+                    
+                    # Gemini AI
+                    response = ai_model.generate_content(user_text)
+                    ai_text = response.text
+                    print(f"🤖 AI says: {ai_text}")
+                    
+                    # Text-to-Speech
+                    tts_engine.say(ai_text)
+                    tts_engine.runAndWait()
+
+if __name__ == "__main__":
+    main()
+"""
+
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  DIRECTORY STRUCTURE AFTER INTEGRATION                                    ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+
+EXPECTED_STRUCTURE = """
+respeaker-ai/
+├── hello_ai.py                        ← MODIFIED (add KWS)
+├── keyword_spotter.py                 ← NEW (provided)
+├── KWS_INTEGRATION_ANALYSIS.md        ← NEW (reference)
+├── KWS_INTEGRATION_GUIDE.py           ← NEW (reference)
+├── KWS_QUICK_INTEGRATION.txt          ← NEW (this file)
+├── models/
+│   ├── en/                            ← EXISTING (Vosk models)
+│   │   ├── README
+│   │   ├── am/
+│   │   ├── conf/
+│   │   ├── graph/
+│   │   └── ivector/
+│   └── kws/                           ← NEW (Keyword spotting models)
+│       ├── where.tflite               ← ADD (train or download)
+│       └── speed.tflite               ← ADD (train or download)
+├── requirements_rpi.txt               ← MODIFY (add tensorflow/tflite-runtime)
+└── ... other files ...
+"""
+
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  SIMPLE COMPARISON: BEFORE vs AFTER                                       ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+
+COMPARISON = """
+BEFORE:
+  Vosk always listening → Full speech recognition every time
+  ├─ Fast response if speaking: ~500ms
+  ├─ High CPU usage
+  └─ Many false positives
+
+AFTER:
+  KWS keyword detection → Only run Vosk if keyword detected
+  ├─ Very fast if keyword detected: ~100-150ms
+  ├─ Low CPU usage (KWS is lightweight)
+  ├─ Fewer false positives (only process relevant audio)
+  ├─ Perfect for "WHERE" and "SPEED" detection
+  └─ Ideal for always-listening applications on Raspberry Pi
+"""
+
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  FINAL CHECKLIST                                                          ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+
+CHECKLIST = """
+Quick Integration Checklist:
+
+1. Copy Files:
+   ☐ Copy keyword_spotter.py to your project root
+   
+2. Add to hello_ai.py:
+   ☐ Import: from keyword_spotter import MultiKeywordSpotter
+   ☐ Import: import numpy as np
+   ☐ Function: initialize_keyword_spotters()
+   ☐ Init in loop: kws_detector = initialize_keyword_spotters()
+   ☐ Detection: audio_array = np.frombuffer(...)
+   ☐ Check: detected = kws_detector.detect_any(audio_array)
+   ☐ Skip (optional): if not detected: continue
+   
+3. Get Models:
+   ☐ Create: mkdir -p models/kws
+   ☐ Add: where.tflite
+   ☐ Add: speed.tflite
+   
+4. Install:
+   ☐ pip install tensorflow numpy
+   
+5. Test:
+   ☐ python hello_ai.py
+   ☐ Say "WHERE"
+   ☐ Say "SPEED"
+   
+6. Optimize:
+   ☐ Adjust thresholds (0.85 is starting point)
+   ☐ Test on Raspberry Pi
+   ☐ Measure performance
+
+Done! 🎉
+"""
+
+
+if __name__ == "__main__":
+    print(MINIMAL_EXAMPLE)
+    print("\n" + "="*80 + "\n")
+    print(EXPECTED_STRUCTURE)
+    print("\n" + "="*80 + "\n")
+    print(COMPARISON)
+    print("\n" + "="*80 + "\n")
+    print(CHECKLIST)

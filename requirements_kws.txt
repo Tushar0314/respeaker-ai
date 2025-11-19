@@ -1,0 +1,23 @@
+# Requirements for ReSpeaker AI with Keyword Spotting
+# Install with: pip3 install -r requirements_kws.txt
+# OR update requirements_rpi.txt with these additions
+
+# Existing dependencies
+vosk>=0.3.45
+sounddevice>=0.4.6
+google-generativeai>=0.8.0
+pyttsx3>=2.90
+
+# NEW: Keyword Spotting dependencies
+# Choose ONE of the following:
+
+# Option 1: Full TensorFlow (more features, larger size ~300MB)
+# tensorflow>=2.10.0
+# numpy>=1.21.0
+
+# Option 2: TensorFlow Lite Runtime (lightweight, ~10MB - RECOMMENDED for Raspberry Pi)
+tflite-runtime>=2.8.0
+numpy>=1.21.0
+
+# Optional: ReSpeaker hardware library
+# respeaker>=0.0.7

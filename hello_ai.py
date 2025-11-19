@@ -132,23 +132,22 @@ def say(text: str):
     """Speak text using TTS with error handling and reinitialization."""
     print(f"[TTS] -> {text}")
     
-    # Try Windows SAPI (built-in Windows TTS) as a fallback
+    # Try macOS native 'say' command first (most reliable on Mac)
     try:
-        import win32com.client
-        speaker = win32com.client.Dispatch("SAPI.SpVoice")
-        speaker.Volume = 100
-        speaker.Rate = 0
-        print("[TTS] Using Windows SAPI (built-in Windows TTS)")
-        speaker.Speak(text)
-        print("[TTS] Finished speaking via SAPI.")
+        import subprocess
+        import shlex
+        print("[TTS] Using macOS native 'say' command...")
+        # Escape the text properly for shell
+        subprocess.run(['say', text], check=True, timeout=30)
+        print("[TTS] Finished speaking via macOS say.")
         return
     except Exception as e:
-        print(f"[TTS] SAPI failed: {e}, falling back to pyttsx3...")
+        print(f"[TTS] macOS say failed: {e}, falling back to pyttsx3...")
     
     # Fallback to pyttsx3
     try:
         # Reinitialize TTS engine for each call to avoid issues
-        tts_engine = pyttsx3.init()
+        tts_engine = pyttsx3.init('nsss')  # Use macOS native speech synthesis
         tts_engine.setProperty('volume', 1.0)
         tts_engine.setProperty('rate', 150)
         
@@ -226,6 +225,6 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
-    except KeyboardInterrupt:
+        main()``
+    except KeyboardInterrupt:          
         print("\nExiting.")
