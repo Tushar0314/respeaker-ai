@@ -30,7 +30,7 @@ print("=" * 60)
 
 # ====== STEP 1: AUTO-DETECT RESPEAKER ======
 def find_respeaker_device():
-    """Auto-detect ReSpeaker 4-Mic Array device."""
+    """Auto-detect ReSpeaker 4-Mic Array device (USB or GPIO-connected)."""
     print("\n[STEP 1] Detecting ReSpeaker 4-Mic Array...")
     devices = sd.query_devices()
     
@@ -40,7 +40,20 @@ def find_respeaker_device():
         if channels > 0:
             print(f"  [{idx}] {device['name']} - Input: {channels} channels, SR: {device.get('default_samplerate', 'N/A')} Hz")
     
-    # Look for ReSpeaker specifically
+    # Check for GPIO-connected ReSpeaker via ALSA
+    print("\n[Checking for GPIO-connected ReSpeaker via ALSA...]")
+    try:
+        result = subprocess.run(['arecord', '-l'], capture_output=True, text=True, timeout=5)
+        alsa_output = result.stdout.lower()
+        
+        if 'seeed' in alsa_output or 'ac10x' in alsa_output or 'respeaker' in alsa_output:
+            print("✓ GPIO-connected ReSpeaker detected via ALSA!")
+            print("  Using ALSA device for audio input")
+            return 'hw:0,0'  # Default ALSA device for ReSpeaker
+    except Exception as e:
+        print(f"[ALSA check info] {e}")
+    
+    # Look for ReSpeaker via sounddevice (USB connection)
     for idx, device in enumerate(devices):
         name = device['name'].lower()
         if device['max_input_channels'] >= 1:
@@ -52,16 +65,18 @@ def find_respeaker_device():
                 return idx
     
     # If not auto-detected, ask user to select
-    print("\n⚠ ReSpeaker not auto-detected. Please select the ReSpeaker device:")
+    print("\n⚠ ReSpeaker not auto-detected via sounddevice. Please select the ReSpeaker device:")
     try:
-        idx = int(input("Enter device index number: "))
-        if 0 <= idx < len(devices):
+        idx = int(input("Enter device index number (or 'hw:0,0' for GPIO): "))
+        if isinstance(idx, int) and 0 <= idx < len(devices):
             print(f"✓ Selected device {idx}: {devices[idx]['name']}")
             return idx
     except:
         pass
     
-    return None
+    # Default to pulse/default if available
+    print("\n⚠ Using default audio device (pulse)")
+    return 10  # Default device index from test output
 
 # ====== STEP 2: SETUP TEXT-TO-SPEECH ======
 def say(text):
@@ -140,7 +155,7 @@ def init_gemini():
 
 # ====== STEP 4: SPEECH RECOGNITION ======
 def listen_once(mic_index, rate=RESPEAKER_RATE, seconds=3.0):
-    """Capture audio from ReSpeaker and recognize speech."""
+    """Capture audio from ReSpeaker (USB or GPIO) and recognize speech."""
     q = queue.Queue()
     
     def audio_callback(indata, frames, time_info, status):
@@ -157,24 +172,59 @@ def listen_once(mic_index, rate=RESPEAKER_RATE, seconds=3.0):
         frames_needed = int(rate * seconds)
         got = 0
         
-        # Capture audio
-        with sd.RawInputStream(
-            device=mic_index,
-            samplerate=rate,
-            blocksize=RESPEAKER_CHUNK,
-            dtype='int16',
-            channels=RESPEAKER_CHANNELS,
-            callback=audio_callback
-        ):
-            while got < frames_needed:
-                try:
-                    buf = q.get(timeout=1)
-                    got += len(buf) // 2
-                    
-                    if rec.AcceptWaveform(buf):
+        # Handle both sounddevice (numeric) and ALSA (string) devices
+        if isinstance(mic_index, str):
+            # ALSA device (hw:0,0)
+            print(f"[Using ALSA device: {mic_index}]")
+            try:
+                # Use arecord for ALSA devices
+                import wave
+                import tempfile
+                
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                    tmp_path = tmp.name
+                
+                subprocess.run(
+                    ['arecord', '-D', mic_index, '-f', 'S16_LE', '-r', str(rate), '-c', '1', '-d', str(int(seconds)+1), tmp_path],
+                    timeout=int(seconds)+5,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                
+                # Read the recorded audio
+                with open(tmp_path, 'rb') as f:
+                    f.read(44)  # Skip WAV header
+                    while True:
+                        buf = f.read(RESPEAKER_CHUNK * 2)
+                        if not buf:
+                            break
+                        if rec.AcceptWaveform(buf):
+                            break
+                
+                os.unlink(tmp_path)
+            except Exception as e:
+                print(f"[ALSA recording error] {e}")
+                return ""
+        else:
+            # Sounddevice device (numeric index)
+            # Capture audio
+            with sd.RawInputStream(
+                device=mic_index,
+                samplerate=rate,
+                blocksize=RESPEAKER_CHUNK,
+                dtype='int16',
+                channels=RESPEAKER_CHANNELS,
+                callback=audio_callback
+            ):
+                while got < frames_needed:
+                    try:
+                        buf = q.get(timeout=1)
+                        got += len(buf) // 2
+                        
+                        if rec.AcceptWaveform(buf):
+                            break
+                    except queue.Empty:
                         break
-                except queue.Empty:
-                    break
         
         # Get final result
         result = json.loads(rec.FinalResult())
