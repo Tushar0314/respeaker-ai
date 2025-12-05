@@ -235,15 +235,78 @@ def listen_once(mic_index, rate=RESPEAKER_RATE, seconds=3.0):
         print(f"[Listen error] {e}")
         return ""
 
-# ====== STEP 5: GET GEMINI RESPONSE ======
-def get_ai_response(prompt, model_name):
-    """Get response from Gemini AI."""
+# ====== STEP 5: GET LOCATION ======
+def get_current_location():
+    """Get current location using IP-based geolocation (free, no GPS needed)."""
+    try:
+        import requests
+        # Using ipapi.co for free IP-based location
+        response = requests.get('https://ipapi.co/json/', timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                'lat': data.get('latitude'),
+                'lon': data.get('longitude'),
+                'city': data.get('city'),
+                'region': data.get('region'),
+                'country': data.get('country_name'),
+                'area': data.get('region')
+            }
+    except Exception as e:
+        print(f"[Location error] {e}")
+    return None
+
+def handle_location_query(user_text):
+    """Handle location-based queries like 'where am I'."""
+    location_keywords = ['where', 'location', 'place', 'here']
+    
+    # Check if user is asking about location
+    if any(keyword in user_text.lower() for keyword in location_keywords):
+        location = get_current_location()
+        
+        if location and location.get('city'):
+            city = location.get('city', 'unknown')
+            region = location.get('region', '')
+            country = location.get('country', '')
+            
+            # Create natural response
+            if region and region != city:
+                return f"You are in {city}, {region}, {country}."
+            else:
+                return f"You are in {city}, {country}."
+        else:
+            return "I cannot find the location right now."
+    
+    return None  # Not a location query
+
+# ====== STEP 6: GET GEMINI RESPONSE ======
+def get_ai_response(prompt, model_name, user_text=""):
+    """Get response from Gemini AI with location awareness."""
     if not model_name:
         return "AI model not available"
     
+    # First check if this is a location query
+    location_response = handle_location_query(user_text)
+    if location_response:
+        return location_response
+    
+    # Get location context for general queries
+    location = get_current_location()
+    
+    # Build enhanced prompt with location context
+    if location and location.get('city'):
+        enhanced_prompt = f"""User said: "{prompt}"
+Current location: {location['city']}, {location.get('region', '')}, {location.get('country', '')}
+
+Reply with one concise spoken sentence suitable for text-to-speech."""
+    else:
+        enhanced_prompt = f"""User said: "{prompt}"
+
+Reply with one concise spoken sentence suitable for text-to-speech."""
+    
     try:
         model = genai.GenerativeModel(model_name)
-        response = model.generate_content(prompt, stream=False)
+        response = model.generate_content(enhanced_prompt, stream=False)
         return response.text
     except Exception as e:
         return f"Error getting response: {e}"
@@ -302,7 +365,7 @@ def main():
                 
                 # Get AI response
                 print(f"\n[AI THINKING...]")
-                response = get_ai_response(recognized_text, model_name)
+                response = get_ai_response(recognized_text, model_name, user_text=recognized_text)
                 
                 print(f"\n[AI RESPONSE] {response}")
                 
