@@ -3,6 +3,7 @@
 Voice Assistant for Raspberry Pi with ReSpeaker 4-Mic Array
 Optimized for best performance with external JBL speaker
 Works with Gemini AI for intelligent responses
+Location-aware with Google Maps integration
 """
 
 import json
@@ -16,6 +17,7 @@ import time
 
 # ====== CONFIGURATION ======
 GEMINI_API_KEY = 'AIzaSyAxkVCMAiB0ksjuA9jDvrOgXH3v5wYueVQ'
+GOOGLE_MAPS_API_KEY = 'AIzaSyD0ewRk6lzFRYkts_mcy6UFAF6lfdazvd8'
 MODEL_DIR = "models/en"
 
 # ReSpeaker 4-Mic Array Settings (OPTIMIZED)
@@ -237,10 +239,67 @@ def listen_once(mic_index, rate=RESPEAKER_RATE, seconds=3.0):
 
 # ====== STEP 5: GET LOCATION ======
 def get_current_location():
-    """Get current location using IP-based geolocation (free, no GPS needed)."""
+    """Get current location using Google Maps Geolocation API."""
     try:
         import requests
-        # Using ipapi.co for free IP-based location
+        
+        # Method 1: Try Google Maps Geolocation API (WiFi-based)
+        geolocation_url = 'https://www.googleapis.com/geolocation/v1/geolocate'
+        geolocation_params = {'key': GOOGLE_MAPS_API_KEY}
+        
+        geo_response = requests.post(
+            geolocation_url,
+            params=geolocation_params,
+            json={},
+            timeout=5
+        )
+        
+        if geo_response.status_code == 200:
+            geo_data = geo_response.json()
+            lat = geo_data.get('location', {}).get('lat')
+            lon = geo_data.get('location', {}).get('lng')
+            
+            if lat and lon:
+                # Use Reverse Geocoding to get address
+                geocode_url = 'https://maps.googleapis.com/maps/api/geocode/json'
+                geocode_params = {
+                    'latlng': f'{lat},{lon}',
+                    'key': GOOGLE_MAPS_API_KEY
+                }
+                
+                geocode_response = requests.get(geocode_url, params=geocode_params, timeout=5)
+                
+                if geocode_response.status_code == 200:
+                    geocode_data = geocode_response.json()
+                    
+                    if geocode_data.get('results'):
+                        result = geocode_data['results'][0]
+                        
+                        # Extract city, region, country from address components
+                        city = None
+                        region = None
+                        country = None
+                        
+                        for component in result.get('address_components', []):
+                            types = component.get('types', [])
+                            if 'locality' in types:
+                                city = component.get('long_name')
+                            elif 'administrative_area_level_1' in types:
+                                region = component.get('long_name')
+                            elif 'country' in types:
+                                country = component.get('long_name')
+                        
+                        return {
+                            'lat': lat,
+                            'lon': lon,
+                            'city': city or 'Unknown',
+                            'region': region,
+                            'country': country,
+                            'formatted_address': result.get('formatted_address', '')
+                        }
+        
+        # Fallback: IP-based location
+        print("[Location] Google API failed, using IP-based fallback...")
         response = requests.get('https://ipapi.co/json/', timeout=5)
         if response.status_code == 200:
             data = response.json()
@@ -250,7 +309,7 @@ def get_current_location():
                 'city': data.get('city'),
                 'region': data.get('region'),
                 'country': data.get('country_name'),
-                'area': data.get('region')
+                'formatted_address': f"{data.get('city')}, {data.get('country_name')}"
             }
     except Exception as e:
         print(f"[Location error] {e}")
