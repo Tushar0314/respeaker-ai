@@ -1,0 +1,323 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                  RASPBERRY PI CAMERA STREAMING SYSTEM                    ║
+║                Camera Module 3 → Live Video Stream                       ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════
+                            SYSTEM ARCHITECTURE
+═══════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────┐
+│  Camera Module 3    │  📷 Physical Camera
+│  (CSI Connection)   │  - 12MP Sony IMX708
+│                     │  - 1920×1080 @ 30fps
+└──────────┬──────────┘  - Auto-focus
+           │
+           │ CSI Cable
+           │
+           ▼
+┌─────────────────────┐
+│  Raspberry Pi 5     │  🥧 Processing Unit
+│                     │
+│  ┌───────────────┐  │  📦 picamera2 Library
+│  │  libcamera    │  │  - Captures frames
+│  │   Driver      │  │  - JPEG encoding
+│  └───────┬───────┘  │  - Hardware accelerated
+│          │          │
+│          ▼          │
+│  ┌───────────────┐  │  🐍 Python Script
+│  │camera_stream  │  │  - MJPEG encoding
+│  │    .py        │  │  - HTTP server
+│  └───────┬───────┘  │  - Multi-threaded
+│          │          │
+│          ▼          │
+│  ┌───────────────┐  │  🌐 HTTP Server
+│  │ Port 8080     │  │  - Streams video
+│  └───────┬───────┘  │  - Serves web page
+│          │          │  - Multiple viewers
+└──────────┼──────────┘
+           │
+           │ Network (WiFi/Ethernet)
+           │
+           ▼
+    ┌──────────────┐
+    │  Viewers     │
+    └──────────────┘
+
+═══════════════════════════════════════════════════════════════════════════
+                              STREAMING METHODS
+═══════════════════════════════════════════════════════════════════════════
+
+METHOD 1: LOCAL NETWORK (SAME WIFI)
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│  [Pi Camera] → [Python Server] → [WiFi Router] → [Your Phone]     │
+│                      :8080            LAN          Browser         │
+│                                                                    │
+│  URL: http://192.168.1.XXX:8080/                                   │
+│  Speed: Fast (~1 sec delay)                                        │
+│  Quality: Full HD                                                  │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+
+METHOD 2: INTERNET ACCESS (PORT FORWARDING)
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│  [Pi Camera] → [WiFi Router] → [Internet] → [Remote Phone]        │
+│       :8080     Port Forward                     Browser          │
+│                                                                    │
+│  Router Setup:                                                     │
+│    External Port: 8080 → Internal IP: 192.168.1.XXX:8080         │
+│                                                                    │
+│  URL: http://YOUR_PUBLIC_IP:8080/                                 │
+│  Speed: Depends on upload speed                                   │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+
+METHOD 3: SERVER UPLOAD
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│  [Pi Camera] → [Python] → [HTTP POST] → [Your Server]             │
+│                Every 5s                  echo.cooperativepaddling │
+│                                                .com                │
+│                                                                    │
+│  Server receives JPEG frames                                       │
+│  Can display latest image on your website                         │
+│  Lower bandwidth than continuous stream                            │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════
+                               DATA FLOW
+═══════════════════════════════════════════════════════════════════════════
+
+1️⃣  CAMERA CAPTURES
+    📷 Camera Module 3
+    ↓
+    Raw sensor data (12MP)
+    ↓
+    Resized to 1920×1080
+
+2️⃣  ENCODING
+    🔄 JPEG Encoder (Hardware)
+    ↓
+    Compressed JPEG (~100-200 KB per frame)
+    ↓
+    30 frames per second
+
+3️⃣  STREAMING
+    📡 HTTP Server (MJPEG)
+    ↓
+    Continuous stream of JPEG frames
+    ↓
+    Multipart/x-mixed-replace
+
+4️⃣  VIEWING
+    🌐 Web Browser
+    ↓
+    Decodes JPEG frames
+    ↓
+    Displays as video
+
+═══════════════════════════════════════════════════════════════════════════
+                           WEB INTERFACE LAYOUT
+═══════════════════════════════════════════════════════════════════════════
+
+┌────────────────────────────────────────────────────────────────────┐
+│  http://YOUR_PI_IP:8080/                                           │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  ╔══════════════════════════════════════════════════════════════╗ │
+│  ║  📷 Raspberry Pi Camera                                      ║ │
+│  ║                                                              ║ │
+│  ║  🟢 LIVE                                                     ║ │
+│  ╚══════════════════════════════════════════════════════════════╝ │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │                                                              │ │
+│  │                   [LIVE VIDEO FEED]                          │ │
+│  │                                                              │ │
+│  │                  1920 × 1080 @ 30fps                         │ │
+│  │                                                              │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  Resolution:  1920×1080                                      │ │
+│  │  Frame Rate:  30 FPS                                         │ │
+│  │  Device:      Pi 5 + Camera Module 3                         │ │
+│  │  Stream URL:  http://YOUR_PI_IP:8080/stream                 │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════
+                              FILE STRUCTURE
+═══════════════════════════════════════════════════════════════════════════
+
+respeaker-ai/
+│
+├── 📷 CAMERA STREAMING
+│   ├── camera_stream.py          # Interactive menu version
+│   ├── camera_stream_auto.py     # Auto-start version
+│   └── setup_camera.sh            # Setup script
+│
+├── 📚 DOCUMENTATION
+│   ├── CAMERA_README.md           # Quick reference
+│   ├── CAMERA_SETUP_GUIDE.md     # Complete guide
+│   └── CAMERA_STREAMING_DIAGRAM.txt # This file
+│
+└── 🎙️ VOICE ASSISTANT (Existing)
+    ├── hello_ai_pi_custom.py
+    ├── waypoint_receiver.py
+    └── ... (other files)
+
+═══════════════════════════════════════════════════════════════════════════
+                           SETUP WORKFLOW
+═══════════════════════════════════════════════════════════════════════════
+
+ON RASPBERRY PI:
+
+Step 1: Transfer Files
+┌────────────────────────────────────────────────────────────────┐
+│ scp camera_stream.py pi@raspberrypi.local:~/respeaker-ai/     │
+│ scp camera_stream_auto.py pi@raspberrypi.local:~/respeaker-ai/│
+│ scp setup_camera.sh pi@raspberrypi.local:~/respeaker-ai/      │
+└────────────────────────────────────────────────────────────────┘
+
+Step 2: Run Setup
+┌────────────────────────────────────────────────────────────────┐
+│ ssh pi@raspberrypi.local                                       │
+│ cd ~/respeaker-ai                                              │
+│ chmod +x setup_camera.sh                                       │
+│ ./setup_camera.sh                                              │
+└────────────────────────────────────────────────────────────────┘
+
+Step 3: Start Streaming
+┌────────────────────────────────────────────────────────────────┐
+│ python3 camera_stream.py                                       │
+│ # Choose option 1: Start HTTP Stream                           │
+└────────────────────────────────────────────────────────────────┘
+
+Step 4: View Stream
+┌────────────────────────────────────────────────────────────────┐
+│ Open browser on phone/computer:                                │
+│ http://192.168.1.XXX:8080/                                     │
+│ (Replace XXX with Pi's IP address)                             │
+└────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════
+                          BANDWIDTH REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════
+
+Resolution    FPS   JPEG Quality   Bandwidth/Viewer   Multiple Viewers
+─────────────────────────────────────────────────────────────────────────
+640×480       15    85%            0.5 Mbps           Up to 10
+1280×720      15    85%            1.5 Mbps           Up to 5
+1280×720      30    85%            3 Mbps             Up to 3
+1920×1080     15    85%            3 Mbps             Up to 3
+1920×1080     30    85%            6 Mbps             Up to 2
+
+Note: Pi 5 WiFi can handle ~100 Mbps, so bandwidth is rarely the bottleneck
+
+═══════════════════════════════════════════════════════════════════════════
+                              USE CASE: BOAT
+═══════════════════════════════════════════════════════════════════════════
+
+🚢 SCENARIO: Sailing with live camera feed
+
+SETUP:
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│  [Camera on Mast] → [Pi 5 below deck] → [4G Hotspot]          │
+│   Wide angle view     Auto-start        Mobile data           │
+│                                                                │
+│                          ↓                                     │
+│                                                                │
+│                    [Internet]                                  │
+│                                                                │
+│                          ↓                                     │
+│                                                                │
+│            [Friend's Phone Anywhere]                           │
+│             Watches live stream                                │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+
+RECOMMENDED SETTINGS:
+- Resolution: 1280×720 (saves mobile data)
+- FPS: 15 (smooth enough, less data)
+- Upload to server: Every 10 seconds (redundancy)
+- Auto-start on boot (always recording)
+
+POWER:
+- Pi 5: ~5-8W
+- With 12V → 5V converter
+- Can run on boat battery all day
+
+═══════════════════════════════════════════════════════════════════════════
+                          TROUBLESHOOTING FLOWCHART
+═══════════════════════════════════════════════════════════════════════════
+
+Camera Not Working?
+    │
+    ├─→ Check cable connection
+    │   └─→ Reseat CSI cable on both ends
+    │
+    ├─→ Check if camera enabled
+    │   └─→ sudo raspi-config → Interface → Camera
+    │
+    └─→ Test with libcamera
+        └─→ libcamera-hello
+
+Can't Access Stream?
+    │
+    ├─→ Check Pi IP
+    │   └─→ hostname -I
+    │
+    ├─→ Check firewall
+    │   └─→ sudo ufw allow 8080
+    │
+    └─→ Check same network
+        └─→ Ping Pi from phone
+
+Stream Freezing?
+    │
+    ├─→ Lower resolution
+    │   └─→ CAMERA_RESOLUTION = (1280, 720)
+    │
+    ├─→ Lower FPS
+    │   └─→ CAMERA_FRAMERATE = 15
+    │
+    └─→ Reduce quality
+        └─→ JPEG_QUALITY = 70
+
+═══════════════════════════════════════════════════════════════════════════
+                         INTEGRATION OPTIONS
+═══════════════════════════════════════════════════════════════════════════
+
+OPTION 1: Standalone Viewer
+┌────────────────────────────────────────────────────────────────┐
+│ Pi streams directly to browsers                                │
+│ No server needed                                               │
+│ Works great on LAN                                             │
+└────────────────────────────────────────────────────────────────┘
+
+OPTION 2: Upload to Server
+┌────────────────────────────────────────────────────────────────┐
+│ Pi sends frames to http://echo.cooperativepaddling.com/       │
+│ Server stores/displays latest image                            │
+│ Can embed on website                                           │
+│ Lower bandwidth than live stream                               │
+└────────────────────────────────────────────────────────────────┘
+
+OPTION 3: Combined
+┌────────────────────────────────────────────────────────────────┐
+│ Pi streams locally (instant playback)                          │
+│ AND uploads to server (remote backup)                          │
+│ Best of both worlds                                            │
+└────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════
+
+                        🎬 READY TO STREAM! 
+
+═══════════════════════════════════════════════════════════════════════════

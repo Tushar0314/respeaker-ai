@@ -14,6 +14,8 @@ import os
 import subprocess
 import google.generativeai as genai
 import time
+import math
+from datetime import datetime
 
 # ====== CONFIGURATION ======
 GEMINI_API_KEY = 'AIzaSyAxkVCMAiB0ksjuA9jDvrOgXH3v5wYueVQ'
@@ -239,7 +241,13 @@ def listen_once(mic_index, rate=RESPEAKER_RATE, seconds=3.0):
 
 # ====== STEP 5: GET LOCATION ======
 def get_current_location():
-    """Get current location using Google Maps Geolocation API."""
+    """Get current location - first check waypoints, then fall back to Google/IP."""
+    # First, check if we have waypoints from the boat
+    waypoint_location = get_waypoint_location()
+    if waypoint_location:
+        return waypoint_location
+    
+    # Otherwise use Google Maps/IP location
     try:
         import requests
         
@@ -315,26 +323,172 @@ def get_current_location():
         print(f"[Location error] {e}")
     return None
 
+def calculate_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two GPS coordinates in meters using Haversine formula."""
+    R = 6371000  # Earth's radius in meters
+    
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
+    
+    a = math.sin(delta_lat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    
+    return R * c
+
+def get_waypoint_location():
+    """Read waypoints from file sent by friend's app."""
+    try:
+        waypoints_file = 'waypoints.json'
+        current_location_file = 'current_location.json'
+        
+        if not os.path.exists(waypoints_file):
+            return None
+        
+        with open(waypoints_file, 'r') as f:
+            data = json.load(f)
+        
+        waypoints = data.get('waypoints', [])
+        if not waypoints:
+            return None
+        
+        # Try to get current location from file (updated by the app)
+        current_lat = None
+        current_lon = None
+        
+        if os.path.exists(current_location_file):
+            try:
+                with open(current_location_file, 'r') as f:
+                    current_data = json.load(f)
+                    current_lat = current_data.get('lat')
+                    current_lon = current_data.get('lon')
+            except:
+                pass
+        
+        # If we have current location, find nearest waypoint
+        if current_lat and current_lon:
+            nearest_wp = None
+            min_distance = float('inf')
+            
+            for wp in waypoints:
+                distance = calculate_distance(current_lat, current_lon, wp['lat'], wp['lon'])
+                if distance < min_distance:
+                    min_distance = distance
+                    nearest_wp = wp
+            
+            if nearest_wp:
+                return {
+                    'lat': nearest_wp['lat'],
+                    'lon': nearest_wp['lon'],
+                    'waypoint_name': nearest_wp['name'],
+                    'waypoint_count': len(waypoints),
+                    'is_waypoint': True,
+                    'all_waypoints': waypoints,
+                    'distance_to_waypoint': min_distance,
+                    'current_lat': current_lat,
+                    'current_lon': current_lon
+                }
+        
+        # Otherwise, return the most recent waypoint
+        latest_wp = waypoints[-1]
+        
+        return {
+            'lat': latest_wp['lat'],
+            'lon': latest_wp['lon'],
+            'waypoint_name': latest_wp['name'],
+            'waypoint_count': len(waypoints),
+            'is_waypoint': True,
+            'all_waypoints': waypoints
+        }
+    except Exception as e:
+        print(f"[Waypoint error] {e}")
+        return None
+
 def handle_location_query(user_text):
-    """Handle location-based queries like 'where am I'."""
-    location_keywords = ['where', 'location', 'place', 'here']
+    """Handle location-based queries in many different ways."""
+    # All the different ways to ask about location
+    location_patterns = [
+        'where am i',
+        'where are we',
+        'what is my location',
+        'what is our location',
+        'tell me my location',
+        'tell me where i am',
+        'tell me where we are',
+        'current location',
+        'my location',
+        'our location',
+        'where',
+        'location',
+        'gps',
+        'coordinates',
+        'position',
+        'waypoint',
+        'destination',
+        'route',
+    ]
+    
+    user_lower = user_text.lower().strip()
     
     # Check if user is asking about location
-    if any(keyword in user_text.lower() for keyword in location_keywords):
+    if any(pattern in user_lower for pattern in location_patterns) or user_lower == 'where':
         location = get_current_location()
         
-        if location and location.get('city'):
-            city = location.get('city', 'unknown')
-            region = location.get('region', '')
-            country = location.get('country', '')
+        if location:
+            # Check if this is waypoint data from friend's app
+            if location.get('is_waypoint'):
+                wp_name = location.get('waypoint_name', 'Unknown')
+                lat = location.get('lat')
+                lon = location.get('lon')
+                wp_count = location.get('waypoint_count', 0)
+                distance = location.get('distance_to_waypoint')
+                
+                # Create natural response about waypoints
+                if distance is not None:
+                    # We know the distance to the waypoint
+                    if distance < 10:
+                        response = f"You are at waypoint {wp_name}. "
+                    elif distance < 50:
+                        response = f"You are very close to waypoint {wp_name}, about {int(distance)} meters away. "
+                    elif distance < 500:
+                        response = f"You are near waypoint {wp_name}, approximately {int(distance)} meters away. "
+                    else:
+                        distance_km = distance / 1000
+                        response = f"The nearest waypoint is {wp_name}, about {distance_km:.1f} kilometers away. "
+                else:
+                    # No current location, just report the waypoint
+                    response = f"Your destination waypoint is {wp_name}. "
+                
+                # Add coordinates if requested
+                if 'coordinate' in user_lower or 'gps' in user_lower:
+                    response += f"Coordinates: latitude {lat:.4f}, longitude {lon:.4f}. "
+                
+                # Add waypoint list if multiple waypoints
+                if wp_count > 1:
+                    response += f"You have {wp_count} waypoints in your route. "
+                    
+                    # List all waypoints if specifically asked
+                    if 'all' in user_lower or 'list' in user_lower or 'show' in user_lower:
+                        all_wps = location.get('all_waypoints', [])
+                        wp_list = ", ".join([wp['name'] for wp in all_wps])
+                        response += f"Your waypoints are: {wp_list}."
+                
+                return response
             
-            # Create natural response
-            if region and region != city:
-                return f"You are in {city}, {region}, {country}."
-            else:
-                return f"You are in {city}, {country}."
-        else:
-            return "I cannot find the location right now."
+            # Regular location (Google/IP-based)
+            elif location.get('city'):
+                city = location.get('city', 'unknown')
+                region = location.get('region', '')
+                country = location.get('country', '')
+                
+                # Create natural response
+                if region and region != city:
+                    return f"You are in {city}, {region}, {country}."
+                else:
+                    return f"You are in {city}, {country}."
+        
+        return "I cannot find the location right now."
     
     return None  # Not a location query
 
