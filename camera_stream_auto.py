@@ -22,9 +22,9 @@ STREAM_PORT = 8080
 JPEG_QUALITY = 85
 
 # Remote server configuration
-REMOTE_SERVER = "http://echo.cooperativepaddling.com"
+REMOTE_SERVER = "http://echo.cooperativepaddling.com/upload.php"
 UPLOAD_ENABLED = True  # Set to True to upload to server
-UPLOAD_INTERVAL = 5  # Upload every N seconds
+UPLOAD_INTERVAL = 0.5  # Upload every 0.5 seconds
 
 print("=" * 70)
 print("📷 AUTO-START CAMERA STREAMER")
