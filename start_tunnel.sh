@@ -3,7 +3,7 @@
 # Improved SSH Tunnel Startup Script
 # This creates a more reliable SSH tunnel with auto-reconnect
 
-echo "🚀 Starting SSH Tunnel to echo.cooperativepaddling.com..."
+echo "🚀 Starting SSH Tunnel to 164.92.89.157 (echo.cooperativepaddling.com)..."
 echo ""
 
 # Kill any existing SSH tunnel
@@ -41,4 +41,4 @@ ssh -R 8080:localhost:8080 \
     -o ServerAliveInterval=60 \
     -o ServerAliveCountMax=3 \
     -o ExitOnForwardFailure=yes \
-    bhaven@echo.cooperativepaddling.com
+    bhaven@164.92.89.157

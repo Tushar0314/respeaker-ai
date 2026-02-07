@@ -8,7 +8,7 @@
 
 In any terminal on Pi, run:
 ```bash
-ssh bhaven@echo.cooperativepaddling.com
+ssh bhaven@164.92.89.157
 ```
 
 When you see:
@@ -88,7 +88,7 @@ If you see that → tunnel is working! **Leave this terminal running!**
 
 From your Mac or another Pi terminal:
 ```bash
-ssh bhaven@echo.cooperativepaddling.com
+ssh bhaven@164.92.89.157
 ```
 
 Password: `bhaven.1`
@@ -231,7 +231,7 @@ sudo systemctl restart nginx
 - Restart tunnel on Pi (Terminal 2)
 
 ### Error: "Host key verification failed"
-- Run: `ssh bhaven@echo.cooperativepaddling.com`
+- Run: `ssh bhaven@164.92.89.157`
 - Type: `yes` when asked
 - Enter password, then `exit`
 

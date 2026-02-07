@@ -41,6 +41,6 @@ echo ""
 
 echo "📋 Summary:"
 echo "If all tests pass, try these on the server:"
-echo "1. SSH to server: ssh bhaven@echo.cooperativepaddling.com"
+echo "1. SSH to server: ssh bhaven@164.92.89.157"
 echo "2. Test tunnel: curl -I http://localhost:8080/stream"
 echo "3. Restart nginx: sudo systemctl restart nginx"

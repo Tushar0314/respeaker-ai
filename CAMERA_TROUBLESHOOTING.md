@@ -38,7 +38,7 @@
 
 1. **SSH to server:**
    ```bash
-   ssh bhaven@echo.cooperativepaddling.com
+   ssh bhaven@164.92.89.157
    ```
 
 2. **Copy and run test script:**
