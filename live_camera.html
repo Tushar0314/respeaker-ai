@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎥 Live Camera Stream</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .back-button {
+            display: inline-block;
+            padding: 10px 25px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+
+        .back-button:hover {
+            background: #f0f0f0;
+            transform: scale(1.05);
+        }
+
+        .stream-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: bold;
+        }
+
+        .live-dot {
+            width: 12px;
+            height: 12px;
+            background: #4CAF50;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.6;
+                transform: scale(1.1);
+            }
+        }
+
+        .stream-wrapper {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 aspect ratio */
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .stream-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .error-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+
+        .error-message h2 {
+            margin-bottom: 15px;
+            color: #f44336;
+        }
+
+        .error-message p {
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .control-button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .control-button:hover {
+            background: #5568d3;
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .status-bar {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 id="cameraTitle">🎥 Live Camera Stream</h1>
+        <a href="/" class="back-button">← Back to Dashboard</a>
+    </div>
+
+    <div class="stream-container">
+        <div class="status-bar">
+            <div class="status-indicator">
+                <div class="live-dot"></div>
+                <span id="statusText">LIVE</span>
+            </div>
+            <div id="timestamp"></div>
+        </div>
+
+        <div class="stream-wrapper">
+            <img id="streamImage" class="stream-image" alt="Camera Stream">
+            <div id="errorMessage" class="error-message" style="display: none;">
+                <h2>⚠️ Stream Not Available</h2>
+                <p>Make sure:</p>
+                <p>1. Camera is running on Raspberry Pi</p>
+                <p>2. SSH tunnel is connected</p>
+                <p>3. Nginx is properly configured</p>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="control-button" onclick="location.reload()">🔄 Refresh</button>
+            <button class="control-button" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+        </div>
+    </div>
+
+    <script>
+        // Get camera number from URL path
+        const path = window.location.pathname;
+        const cameraNumber = path.match(/live(\d+)/)?.[1] || '1';
+        const streamUrl = `/stream${cameraNumber}`;
+
+        // Update title
+        document.getElementById('cameraTitle').textContent = `🎥 Camera ${cameraNumber} - Live Stream`;
+
+        // Update timestamp
+        function updateTimestamp() {
+            const now = new Date();
+            document.getElementById('timestamp').textContent = now.toLocaleString();
+        }
+        updateTimestamp();
+        setInterval(updateTimestamp, 1000);
+
+        // Load stream
+        const streamImage = document.getElementById('streamImage');
+        const errorMessage = document.getElementById('errorMessage');
+        const statusText = document.getElementById('statusText');
+
+        streamImage.src = streamUrl;
+
+        streamImage.onerror = function() {
+            streamImage.style.display = 'none';
+            errorMessage.style.display = 'block';
+            statusText.textContent = 'OFFLINE';
+            document.querySelector('.live-dot').style.background = '#f44336';
+        };
+
+        streamImage.onload = function() {
+            streamImage.style.display = 'block';
+            errorMessage.style.display = 'none';
+            statusText.textContent = 'LIVE';
+            document.querySelector('.live-dot').style.background = '#4CAF50';
+        };
+
+        // Fullscreen toggle
+        function toggleFullscreen() {
+            const wrapper = document.querySelector('.stream-wrapper');
+            if (!document.fullscreenElement) {
+                wrapper.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>

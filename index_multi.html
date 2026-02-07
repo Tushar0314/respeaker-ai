@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎥 Multi-Camera Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+
+        .camera-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .camera-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .camera-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .camera-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .camera-card:hover::before {
+            opacity: 1;
+        }
+
+        .camera-icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+        }
+
+        .camera-card h2 {
+            color: white;
+            font-size: 1.8em;
+            margin-bottom: 10px;
+        }
+
+        .camera-card p {
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 20px;
+            font-size: 1em;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .status-live {
+            background: #4CAF50;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        .status-offline {
+            background: #f44336;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.6;
+            }
+        }
+
+        .view-button {
+            display: inline-block;
+            padding: 12px 30px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .view-button:hover {
+            background: #f0f0f0;
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .offline-card {
+            background: linear-gradient(135deg, #bdc3c7 0%, #95a5a6 100%);
+            cursor: default;
+        }
+
+        .offline-card:hover {
+            transform: none;
+        }
+
+        .info-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .info-section h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .info-section p {
+            color: #666;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+            
+            .camera-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 Multi-Camera Dashboard</h1>
+        <p class="subtitle">Select a camera to view live stream</p>
+        
+        <div class="camera-grid" id="cameraGrid">
+            <!-- Cameras will be loaded here by JavaScript -->
+        </div>
+
+        <div class="info-section">
+            <h3>📌 How to Add More Cameras</h3>
+            <p>
+                To add additional cameras:
+                <br>1. Connect camera to Raspberry Pi
+                <br>2. Run: <code>python camera_stream_multi.py --camera 2 --port 8082</code>
+                <br>3. Start SSH tunnel: <code>ssh -R 8082:localhost:8082 bhaven@164.92.89.157 -N</code>
+                <br>4. Refresh this page to see the new camera
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Define your cameras here
+        const cameras = [
+            { number: 1, name: "Camera 1", location: "Main Entrance", url: "/live1" },
+            { number: 2, name: "Camera 2", location: "Backyard", url: "/live2" },
+            { number: 3, name: "Camera 3", location: "Garage", url: "/live3" },
+        ];
+
+        async function checkCameraStatus(url) {
+            try {
+                const response = await fetch(url, { method: 'HEAD', timeout: 5000 });
+                return response.ok;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        async function loadCameras() {
+            const grid = document.getElementById('cameraGrid');
+            grid.innerHTML = '';
+
+            for (const camera of cameras) {
+                const isOnline = await checkCameraStatus(camera.url);
+                
+                const card = document.createElement('div');
+                card.className = isOnline ? 'camera-card' : 'camera-card offline-card';
+                
+                if (isOnline) {
+                    card.onclick = () => window.location.href = camera.url;
+                }
+
+                card.innerHTML = `
+                    <div class="camera-icon">📹</div>
+                    <div class="status-indicator ${isOnline ? 'status-live' : 'status-offline'}">
+                        ${isOnline ? '🟢 LIVE' : '🔴 OFFLINE'}
+                    </div>
+                    <h2>${camera.name}</h2>
+                    <p>${camera.location}</p>
+                    ${isOnline ? `<a href="${camera.url}" class="view-button">View Stream</a>` : '<p style="color: rgba(255,255,255,0.7);">Camera not available</p>'}
+                `;
+                
+                grid.appendChild(card);
+            }
+        }
+
+        // Load cameras on page load
+        loadCameras();
+
+        // Refresh camera status every 30 seconds
+        setInterval(loadCameras, 30000);
+    </script>
+</body>
+</html>
