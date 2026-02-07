@@ -38,7 +38,7 @@
 
 1. **SSH to server:**
    ```bash
-   ssh root@echo.cooperativepaddling.com
+   ssh bhaven@echo.cooperativepaddling.com
    ```
 
 2. **Copy and run test script:**
@@ -89,7 +89,7 @@
 **Fix on server:**
 ```bash
 # Check nginx config
-cat /etc/nginx/sites-available/default
+sudo cat /etc/nginx/sites-available/default
 
 # Should have this location block:
 # location /stream {
@@ -99,7 +99,7 @@ cat /etc/nginx/sites-available/default
 # }
 
 # Restart nginx
-systemctl restart nginx
+sudo systemctl restart nginx
 ```
 
 ### Issue 4: Firewall Blocking
