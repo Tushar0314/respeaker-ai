@@ -29,16 +29,24 @@ VOLUME = 150    # Volume (0-200)
 
 
 def speak(text):
-    """Speak text using espeak."""
+    """Speak text using espeak and route audio to USB speaker (card 2)."""
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] 🔊 SPEAKING: \"{text}\"")
     try:
+        # Generate speech audio with espeak and pipe to USB speaker (card 2)
+        espeak = subprocess.Popen(
+            ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), '--stdout', text],
+            stdout=subprocess.PIPE
+        )
         subprocess.run(
-            ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), text],
+            ['aplay', '-D', 'plughw:2,0'],
+            stdin=espeak.stdout,
             check=True
         )
+        espeak.wait()
     except FileNotFoundError:
-        print("[ERROR] espeak not installed. Run:  sudo apt-get install espeak")
+        print("[ERROR] espeak or aplay not installed.")
+        print("  Run:  sudo apt-get install espeak alsa-utils")
     except Exception as e:
         print(f"[ERROR] speak failed: {e}")
 
