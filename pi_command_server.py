@@ -28,22 +28,42 @@ VOLUME = 150    # Volume (0-200)
 # ─────────────────────────────────────────
 
 
+def get_audio_device():
+    """Detect USB audio card number from aplay -l."""
+    try:
+        import re
+        result = subprocess.run(['aplay', '-l'], capture_output=True, text=True)
+        for line in result.stdout.split('\n'):
+            if 'usb' in line.lower() and 'card' in line.lower():
+                match = re.search(r'card (\d+)', line.lower())
+                if match:
+                    card_num = match.group(1)
+                    print(f"[Audio] Found USB headphone on card {card_num}")
+                    return f"plughw:{card_num},0"
+        print("[Audio] USB card not found, using default")
+        return "default"
+    except Exception as e:
+        print(f"[Audio] Device detection failed: {e}, using default")
+        return "default"
+
+
 def speak(text):
-    """Speak text using espeak and route audio to USB speaker (card 2)."""
+    """Speak text using espeak routed to USB wired headphone."""
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] 🔊 SPEAKING: \"{text}\"")
     try:
-        # Generate speech audio with espeak and pipe to USB speaker (card 2)
+        audio_device = get_audio_device()
         espeak = subprocess.Popen(
             ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), '--stdout', text],
             stdout=subprocess.PIPE
         )
         subprocess.run(
-            ['aplay', '-D', 'plughw:2,0'],
+            ['aplay', '-D', audio_device],
             stdin=espeak.stdout,
             check=True
         )
         espeak.wait()
+        print("[✓ Speech completed]")
     except FileNotFoundError:
         print("[ERROR] espeak or aplay not installed.")
         print("  Run:  sudo apt-get install espeak alsa-utils")
