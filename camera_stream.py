@@ -50,6 +50,23 @@ except ImportError:
     print("    sudo apt install -y python3-picamera2")
     CAMERA_AVAILABLE = False
 
+
+def create_picamera2_or_none():
+    """Create a Picamera2 instance, or return None if no camera is detected."""
+    try:
+        return Picamera2()
+    except IndexError:
+        print("\n[ERROR] No camera detected by libcamera/picamera2.")
+        print("\nTroubleshooting:")
+        print("  1. Reseat camera ribbon cable (metal contacts facing HDMI side on Pi 5)")
+        print("  2. Run: libcamera-hello --list-cameras")
+        print("  3. Enable camera interface in raspi-config, then reboot")
+        print("  4. Ensure no other process is already using the camera")
+        return None
+    except Exception as e:
+        print(f"\n[ERROR] Camera initialization failed: {e}")
+        return None
+
 # ====== MJPEG STREAMING SERVER ======
 class StreamingOutput(io.BufferedIOBase):
     """Captures frames from camera for streaming."""
@@ -236,7 +253,9 @@ def start_http_stream():
     print("\n[Camera] Initializing Camera Module 3...")
     
     # Initialize camera
-    picam2 = Picamera2()
+    picam2 = create_picamera2_or_none()
+    if picam2 is None:
+        return
     
     # Configure for streaming
     config = picam2.create_video_configuration(
@@ -305,7 +324,9 @@ def capture_snapshot(filename='snapshot.jpg'):
     print(f"\n[Camera] Capturing snapshot: {filename}")
     
     try:
-        picam2 = Picamera2()
+        picam2 = create_picamera2_or_none()
+        if picam2 is None:
+            return False
         config = picam2.create_still_configuration(
             main={"size": CAMERA_RESOLUTION}
         )
@@ -335,7 +356,9 @@ def test_camera():
     print("\n[Testing] Camera Module 3...")
     
     try:
-        picam2 = Picamera2()
+        picam2 = create_picamera2_or_none()
+        if picam2 is None:
+            return
         
         # Get camera info
         print("\n[Camera Information]")

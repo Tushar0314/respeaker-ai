@@ -208,14 +208,17 @@
     <script>
         // Define your cameras here
         const cameras = [
-            { number: 1, name: "Camera 1", location: "Main Entrance", url: "/live1" },
-            { number: 2, name: "Camera 2", location: "Backyard", url: "/live2" },
-            { number: 3, name: "Camera 3", location: "Garage", url: "/live3" },
+            { number: 1, name: "Camera 1", location: "Main Entrance", url: "/live1", stream: "/stream1" },
+            { number: 2, name: "Camera 2", location: "Backyard", url: "/live2", stream: "/stream2" },
+            { number: 3, name: "Camera 3", location: "Garage", url: "/live3", stream: "/stream3" },
         ];
 
-        async function checkCameraStatus(url) {
+        async function checkCameraStatus(streamUrl) {
             try {
-                const response = await fetch(url, { method: 'HEAD', timeout: 5000 });
+                const response = await fetch(streamUrl, { 
+                    method: 'HEAD',
+                    signal: AbortSignal.timeout(3000)
+                });
                 return response.ok;
             } catch (error) {
                 return false;
@@ -227,7 +230,8 @@
             grid.innerHTML = '';
 
             for (const camera of cameras) {
-                const isOnline = await checkCameraStatus(camera.url);
+                // Check the actual stream endpoint, not the page
+                const isOnline = await checkCameraStatus(camera.stream);
                 
                 const card = document.createElement('div');
                 card.className = isOnline ? 'camera-card' : 'camera-card offline-card';

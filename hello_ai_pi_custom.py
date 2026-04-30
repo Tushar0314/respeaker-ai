@@ -324,7 +324,7 @@ def get_current_location():
     return None
 
 def calculate_distance(lat1, lon1, lat2, lon2):
-    """Calculate distance between two GPS coordinates in meters using Haversine formula."""
+    """Calculate distance between two GPS coordinates in meters uu7sing Haversine formula."""
     R = 6371000  # Earth's radius in meters
     
     lat1_rad = math.radians(lat1)
@@ -588,7 +588,7 @@ def main():
                 conversation_count += 1
             else:
                 print("\n[NO SPEECH DETECTED] Listening again...")
-                time.sleep(0.5)
+                time.sleep(0.5
     
     except KeyboardInterrupt:
         print("\n\n" + "=" * 60)

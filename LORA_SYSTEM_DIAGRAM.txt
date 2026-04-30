@@ -1,0 +1,292 @@
+═══════════════════════════════════════════════════════════════════════
+        LORA COMMUNICATION SYSTEM - Pi5 ↔ LoRa32
+═══════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                         RASPBERRY PI 5                              │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │                    DATA SOURCES                              │ │
+│  │                                                              │ │
+│  │  ┌──────────────────┐        ┌──────────────────┐          │ │
+│  │  │current_location  │        │  waypoints.json  │          │ │
+│  │  │      .json       │        │                  │          │ │
+│  │  │                  │        │  - WP1: lat,lon  │          │ │
+│  │  │ lat: 37.78825    │        │  - WP2: lat,lon  │          │ │
+│  │  │ lon: -122.4324   │        │  - WP3: lat,lon  │          │ │
+│  │  └────────┬─────────┘        └────────┬─────────┘          │ │
+│  │           │                            │                    │ │
+│  └───────────┼────────────────────────────┼────────────────────┘ │
+│              │                            │                      │
+│              ▼                            ▼                      │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  TRANSMITTER (lora_transmitter.py)                          │ │
+│  │                                                              │ │
+│  │  • Reads current_location.json / waypoints.json             │ │
+│  │  • Formats: "CURRENT:37.788,-122.432"                       │ │
+│  │  • Sends via Serial → LoRa Module                           │ │
+│  │  • Modes: one-time / continuous (every N seconds)           │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+│                             │                                     │
+│                             ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │              LoRa Module (HAT / USB)                         │ │
+│  │                                                              │ │
+│  │  GPIO UART: /dev/ttyAMA0   or   USB: /dev/ttyUSB0          │ │
+│  │  Frequency: 915 MHz / 868 MHz / 433 MHz                     │ │
+│  │  Range: 1-10 km                                             │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+│                             │                                     │
+└─────────────────────────────┼─────────────────────────────────────┘
+                              │
+                              │  📡 LoRa Radio Transmission
+                              ▼
+                ┌──────────────────────────────┐
+                │         WIRELESS             │
+                │       LoRa Signal            │
+                │    (433/868/915 MHz)         │
+                │                              │
+                │  Range: Up to 10 km          │
+                │  No WiFi/Cellular needed     │
+                └──────────────────────────────┘
+                              │
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                          LoRa32 DEVICE                              │
+│                      (ESP32 + LoRa Module)                          │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │              LoRa Module (SX1276/SX1278)                     │ │
+│  │                                                              │ │
+│  │  Frequency: 915 MHz (matches Pi5)                           │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+│                             │                                     │
+│                             ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  RECEIVER (lora32_example.ino)                              │ │
+│  │                                                              │ │
+│  │  • Receives GPS coordinates                                 │ │
+│  │  • Parses: "CURRENT:37.788,-122.432"                        │ │
+│  │  • Displays on OLED / Serial                                │ │
+│  │  • Stores waypoints                                         │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+│                             │                                     │
+│                             ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │              DISPLAY / STORAGE                               │ │
+│  │                                                              │ │
+│  │  Serial Monitor:      OLED Display (optional):              │ │
+│  │  CURRENT: 37.788250   ┌──────────────┐                      │ │
+│  │          -122.432400  │  CURRENT     │                      │ │
+│  │  WP1: ...             │  37.788250   │                      │ │
+│  │  WP2: ...             │  -122.432400 │                      │ │
+│  │                       └──────────────┘                      │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │              TRANSMITTER (User Input)                        │ │
+│  │                                                              │ │
+│  │  • Button Press → Send "hold"                               │ │
+│  │  • Serial Input → Send custom command                       │ │
+│  │  • JSON: {"message": "Turn left"}                           │ │
+│  │  • Alert: "ALERT:Warning:Battery low"                       │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+│                             │                                     │
+└─────────────────────────────┼─────────────────────────────────────┘
+                              │
+                              │  📡 LoRa Radio Transmission
+                              ▼
+                ┌──────────────────────────────┐
+                │         WIRELESS             │
+                │       LoRa Signal            │
+                │    (433/868/915 MHz)         │
+                │                              │
+                │  Command: "hold"             │
+                └──────────────────────────────┘
+                              │
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         RASPBERRY PI 5                              │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │              LoRa Module (HAT / USB)                         │ │
+│  │                                                              │ │
+│  │  Receives: "hold"                                           │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+│                             │                                     │
+│                             ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  RECEIVER + TTS (lora_receiver_tts.py)                      │ │
+│  │                                                              │ │
+│  │  • Receives commands from LoRa32                            │ │
+│  │  • Parses different formats:                                │ │
+│  │    - Simple: "hold"                                         │ │
+│  │    - JSON: {"message": "Turn left"}                         │ │
+│  │    - Speed: "SPEED:slow:Slow down"                          │ │
+│  │    - Alert: "ALERT:Warning:Battery low"                     │ │
+│  │                                                              │ │
+│  │  • Calls espeak for text-to-speech                          │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+│                             │                                     │
+│                             ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  TEXT-TO-SPEECH ENGINE (espeak)                             │ │
+│  │                                                              │ │
+│  │  Command: espeak -v en -s 150 -p 50 "hold"                  │ │
+│  │                                                              │ │
+│  │  Parameters:                                                │ │
+│  │  • Voice: en (English)                                      │ │
+│  │  • Speed: 150 WPM (words per minute)                        │ │
+│  │  • Pitch: 50 (voice pitch)                                  │ │
+│  │  • Volume: 100                                              │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+│                             │                                     │
+│                             ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │               AUDIO OUTPUT                                   │ │
+│  │                                                              │ │
+│  │                    🔊 Speaker                                │ │
+│  │                                                              │ │
+│  │              Speaks: "hold"                                  │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │  COMMAND HISTORY (lora_command_history.json)                │ │
+│  │                                                              │ │
+│  │  [                                                           │ │
+│  │    {"timestamp": "2026-02-25T23:15:00", "text": "hold"},    │ │
+│  │    {"timestamp": "2026-02-25T23:15:30", "text": "stop"}     │ │
+│  │  ]                                                           │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════
+                    COMPLETE DATA FLOW EXAMPLE
+═══════════════════════════════════════════════════════════════════════
+
+SCENARIO: Friend sends waypoint → Pi5 transmits → LoRa32 receives →
+          User sends command → Pi5 speaks
+
+Step 1: Friend App → Pi5
+  ┌──────────────┐
+  │  Friend App  │
+  │ (Phone/Watch)│
+  └──────┬───────┘
+         │ WiFi/BLE
+         ▼
+  waypoints.json updated:
+  {
+    "waypoints": [
+      {"name": "WP1", "lat": 37.788250, "lon": -122.432400}
+    ]
+  }
+
+Step 2: Pi5 Transmits (lora_transmitter.py)
+  
+  Reads: waypoints.json
+  Formats: "WP1:37.788250,-122.432400"
+  Sends: Serial → LoRa Module → Radio
+
+Step 3: LoRa32 Receives (lora32_example.ino)
+  
+  Receives: "WP1:37.788250,-122.432400"
+  Parses: name=WP1, lat=37.788250, lon=-122.432400
+  Displays: Serial Monitor / OLED
+  
+  Output:
+  ┌─────────────────────────────────────┐
+  │  RECEIVED FROM PI5                  │
+  │  WP1: 37.788250, -122.432400       │
+  │  RSSI: -45 dBm, SNR: 9.5 dB        │
+  └─────────────────────────────────────┘
+
+Step 4: User Presses Button on LoRa32
+  
+  Button → sendCommand("hold")
+  Sends: "hold" → LoRa Radio
+
+Step 5: Pi5 Receives & Speaks (lora_receiver_tts.py)
+  
+  Receives: "hold"
+  Parses: Simple text format
+  Calls: espeak -v en -s 150 -p 50 "hold"
+  
+  Output:
+  [RX] Received: hold
+  [Format] SIMPLE
+  [Text] hold
+  🔊 SPEAKING: "hold"
+  
+  Speaker: 🔊 "hold"
+
+═══════════════════════════════════════════════════════════════════════
+                        FILE RELATIONSHIPS
+═══════════════════════════════════════════════════════════════════════
+
+Data Files (JSON):
+  current_location.json  ──────┐
+  waypoints.json         ──────┼──→ lora_transmitter.py
+                               │
+Python Scripts:                │
+  lora_transmitter.py    ──────┘
+    ↓
+  Serial Port (/dev/ttyAMA0)
+    ↓
+  LoRa Module
+    ↓ ↑  (Radio)
+  LoRa32 Device
+    ↓
+  lora32_example.ino
+    ↓  (sends commands)
+  LoRa Module
+    ↓
+  Serial Port (/dev/ttyAMA0)
+    ↓
+  lora_receiver_tts.py
+    ↓
+  espeak (TTS)
+    ↓
+  🔊 Speaker
+    ↓
+  lora_command_history.json
+
+Documentation:
+  LORA_README.md              ← Start here!
+  LORA_SETUP_GUIDE.md         ← Full setup guide
+  LORA_QUICK_REFERENCE.md     ← Quick commands
+  LORA_SYSTEM_DIAGRAM.txt     ← This file
+
+Setup:
+  setup_lora.sh               ← Run this first!
+
+═══════════════════════════════════════════════════════════════════════
+                       HARDWARE CONNECTIONS
+═══════════════════════════════════════════════════════════════════════
+
+LoRa HAT on Raspberry Pi 5 GPIO:
+
+  Raspberry Pi 5                    LoRa Module
+  ┌────────────┐                   ┌──────────┐
+  │            │                   │          │
+  │ Pin 1  ────┼───── 3.3V ────────┤ VCC      │
+  │ (3.3V)     │                   │          │
+  │            │                   │          │
+  │ Pin 6  ────┼───── GND ─────────┤ GND      │
+  │ (GND)      │                   │          │
+  │            │                   │          │
+  │ Pin 8  ────┼───── TX ──────────┤ RX       │
+  │ (GPIO14)   │                   │          │
+  │            │                   │          │
+  │ Pin 10 ────┼───── RX ──────────┤ TX       │
+  │ (GPIO15)   │                   │          │
+  │            │                   │          │
+  │            │                   │ Antenna──┼─── 📡
+  │            │                   │          │
+  └────────────┘                   └──────────┘
+
+Serial Port: /dev/ttyAMA0
+
+═══════════════════════════════════════════════════════════════════════
