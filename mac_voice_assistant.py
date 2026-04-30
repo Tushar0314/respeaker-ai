@@ -13,7 +13,7 @@ import speech_recognition as sr
 import google.generativeai as genai
 
 # Configuration
-GEMINI_API_KEY = 'AIzaSyAxkVCMAiB0ksjuA9jDvrOgXH3v5wYueVQ'
+GEMINI_API_KEY = 'AIzaSyCkPP0DvADrykHZ9tc6q1Bmv3rkqXEGCmw'
 
 def say(text):
     """Use Mac's text-to-speech."""
