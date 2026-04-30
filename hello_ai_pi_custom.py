@@ -18,7 +18,7 @@ import math
 from datetime import datetime
 
 # ====== CONFIGURATION ======
-GEMINI_API_KEY = 'AIzaSyAxkVCMAiB0ksjuA9jDvrOgXH3v5wYueVQ'
+GEMINI_API_KEY = 'AIzaSyCkPP0DvADrykHZ9tc6q1Bmv3rkqXEGCmw'
 GOOGLE_MAPS_API_KEY = 'AIzaSyD0ewRk6lzFRYkts_mcy6UFAF6lfdazvd8'
 MODEL_DIR = "models/en"
 
@@ -588,7 +588,7 @@ def main():
                 conversation_count += 1
             else:
                 print("\n[NO SPEECH DETECTED] Listening again...")
-                time.sleep(0.5
+                time.sleep(0.5)
     
     except KeyboardInterrupt:
         print("\n\n" + "=" * 60)
