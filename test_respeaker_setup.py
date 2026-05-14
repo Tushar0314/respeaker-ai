@@ -94,8 +94,8 @@ if respeaker_idx is not None:
         
         def test_mic():
             duration = 3  # seconds
-            fs = 16000
-            print(f"Recording {duration} seconds...")
+            fs = 48000  # Match ReSpeaker's sample rate
+            print(f"Recording {duration} seconds at {fs} Hz...")
             
             try:
                 audio = sd.rec(int(fs * duration), samplerate=fs, channels=1, 
