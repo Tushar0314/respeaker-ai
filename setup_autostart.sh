@@ -7,8 +7,22 @@
 
 set -e
 
-USER_NAME="voicechat"
-PROJECT_DIR="/home/$USER_NAME/respeaker-ai"
+if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+    USER_NAME="$SUDO_USER"
+else
+    USER_NAME="$(whoami)"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_PROJECT_DIR="/home/$USER_NAME/respeaker-ai"
+
+# Prefer the directory where this script lives, fallback to default home path.
+if [ -d "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/pi_command_server.py" ]; then
+    PROJECT_DIR="$SCRIPT_DIR"
+else
+    PROJECT_DIR="$DEFAULT_PROJECT_DIR"
+fi
+
 VENV_PYTHON="$PROJECT_DIR/venv/bin/python3"
 SYSTEMD_DIR="/etc/systemd/system"
 

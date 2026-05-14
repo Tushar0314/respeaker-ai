@@ -11,6 +11,7 @@ Flow:
 
 import subprocess
 import sys
+import json
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -19,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 # ─────────────────────────────────────────
 HOST = "0.0.0.0"   # Listen on all network interfaces
 PORT = 5000         # Must match PI_PORT in ESP32 code
+CAMERA_SERVICE = "pi-camera"
 
 # espeak voice settings
 VOICE  = "en"   # en, en-us, en-gb
@@ -71,7 +73,84 @@ def speak(text):
         print(f"[ERROR] speak failed: {e}")
 
 
+def get_service_active(service_name):
+    """Return True if systemd service is active."""
+    try:
+        result = subprocess.run(
+            ['systemctl', 'is-active', service_name],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        return result.stdout.strip() == 'active'
+    except Exception as e:
+        print(f"[WARN] Could not read service state for {service_name}: {e}")
+        return False
+
+
+def run_service_action(service_name, action):
+    """Run a systemctl action and return (ok, message)."""
+    try:
+        result = subprocess.run(
+            ['systemctl', action, service_name],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        if result.returncode == 0:
+            return True, f"{service_name} {action} OK"
+        err = (result.stderr or result.stdout or "unknown error").strip()
+        return False, f"{service_name} {action} failed: {err}"
+    except Exception as e:
+        return False, f"{service_name} {action} exception: {e}"
+
+
+def handle_camera_command(command_text):
+    """Map incoming text to camera service actions."""
+    cmd = command_text.strip().lower()
+    if cmd in {"camera", "camera status", "status camera"}:
+        active = get_service_active(CAMERA_SERVICE)
+        return True, "camera is running" if active else "camera is stopped"
+
+    if cmd in {"camera on", "camera start", "start camera", "start recording"}:
+        ok, msg = run_service_action(CAMERA_SERVICE, 'start')
+        return ok, "camera started" if ok else msg
+
+    if cmd in {"camera off", "camera stop", "stop camera", "stop recording"}:
+        ok, msg = run_service_action(CAMERA_SERVICE, 'stop')
+        return ok, "camera stopped" if ok else msg
+
+    if cmd in {"camera restart", "restart camera"}:
+        ok, msg = run_service_action(CAMERA_SERVICE, 'restart')
+        return ok, "camera restarted" if ok else msg
+
+    return None, None
+
+
 class CommandHandler(BaseHTTPRequestHandler):
+
+    def _write_json(self, status_code, payload):
+        body = json.dumps(payload).encode('utf-8')
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        """Health endpoint for quick connectivity tests from ESP32/Pi."""
+        if self.path == "/health":
+            camera_active = get_service_active(CAMERA_SERVICE)
+            self._write_json(200, {
+                "ok": True,
+                "service": "pi_command_server",
+                "camera_active": camera_active,
+                "timestamp": datetime.now().isoformat()
+            })
+            return
+
+        self.send_response(404)
+        self.end_headers()
 
     def do_POST(self):
         """Handle POST /command from ESP32."""
@@ -90,9 +169,14 @@ class CommandHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"OK")
 
-            # Speak the command
+            # Handle camera control command, otherwise speak incoming text.
             if body:
-                speak(body)
+                camera_ok, camera_message = handle_camera_command(body)
+                if camera_ok is None:
+                    speak(body)
+                else:
+                    print(f"[Camera] {camera_message}")
+                    speak(camera_message)
         else:
             self.send_response(404)
             self.end_headers()
@@ -123,6 +207,7 @@ def main():
     print("=" * 55)
     print(f"\n✅ Pi IP Address : {pi_ip}")
     print(f"✅ Listening on  : http://{pi_ip}:{PORT}/command")
+    print(f"✅ Health check  : http://{pi_ip}:{PORT}/health")
     print(f"\n👉 Tell your friend to set in ESP32 code:")
     print(f'     #define PI_IP   "{pi_ip}"')
     print(f'     #define PI_PORT  {PORT}')
