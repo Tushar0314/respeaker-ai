@@ -11,9 +11,6 @@ Flow:
 
 import subprocess
 import sys
-import json
-import os
-from urllib.parse import parse_qs
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -21,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 # CONFIGURATION
 # ─────────────────────────────────────────
 HOST = "0.0.0.0"   # Listen on all network interfaces
-PORT = int(os.getenv("PI_COMMAND_PORT", "5000"))  # Must match PI_PORT in ESP32 code
+PORT = 5000         # Must match PI_PORT in ESP32 code
 
 # espeak voice settings
 VOICE  = "en"   # en, en-us, en-gb
@@ -31,155 +28,43 @@ VOLUME = 150    # Volume (0-200)
 # ─────────────────────────────────────────
 
 
-def get_audio_device():
-    """Detect USB audio card number from aplay -l."""
-    try:
-        import re
-        result = subprocess.run(['aplay', '-l'], capture_output=True, text=True)
-        for line in result.stdout.split('\n'):
-            if 'usb' in line.lower() and 'card' in line.lower():
-                match = re.search(r'card (\d+)', line.lower())
-                if match:
-                    card_num = match.group(1)
-                    print(f"[Audio] Found USB headphone on card {card_num}")
-                    return f"plughw:{card_num},0"
-        print("[Audio] USB card not found, using default")
-        return "default"
-    except Exception as e:
-        print(f"[Audio] Device detection failed: {e}, using default")
-        return "default"
-
-
 def speak(text):
-    """Speak text using espeak routed to USB wired headphone."""
+    """Speak text using espeak."""
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] 🔊 SPEAKING: \"{text}\"")
     try:
-        audio_device = get_audio_device()
-        espeak = subprocess.Popen(
-            ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), '--stdout', text],
-            stdout=subprocess.PIPE
-        )
         subprocess.run(
-            ['aplay', '-D', audio_device],
-            stdin=espeak.stdout,
+            ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), text],
             check=True
         )
-        espeak.wait()
-        print("[✓ Speech completed]")
     except FileNotFoundError:
-        print("[ERROR] espeak or aplay not installed.")
-        print("  Run:  sudo apt-get install espeak alsa-utils")
+        print("[ERROR] espeak not installed. Run:  sudo apt-get install espeak")
     except Exception as e:
         print(f"[ERROR] speak failed: {e}")
 
 
-def parse_command_from_request(raw_body, content_type):
-    """Extract command text from JSON, form, or plain text payload."""
-    body = (raw_body or "").strip()
-    if not body:
-        return ""
-
-    ctype = (content_type or "").lower()
-
-    if "application/json" in ctype:
-        try:
-            payload = json.loads(body)
-            if isinstance(payload, dict):
-                for key in ("command", "message", "text", "cmd"):
-                    value = payload.get(key)
-                    if isinstance(value, str) and value.strip():
-                        return value.strip()
-            if isinstance(payload, str):
-                return payload.strip()
-        except Exception:
-            return body
-
-    if "application/x-www-form-urlencoded" in ctype:
-        form = parse_qs(body)
-        for key in ("command", "message", "text", "cmd"):
-            values = form.get(key)
-            if values and values[0].strip():
-                return values[0].strip()
-        return body
-
-    return body
-
-
 class CommandHandler(BaseHTTPRequestHandler):
-
-    def _is_command_path(self):
-        return self.path in {"/", "/command", "/message", "/speak"}
-
-    def _write_json(self, status_code, payload):
-        body = json.dumps(payload).encode('utf-8')
-        self.send_response(status_code)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-
-    def do_GET(self):
-        """Health endpoint for quick connectivity tests from ESP32/Pi."""
-        if self.path == "/health":
-            self._write_json(200, {
-                "ok": True,
-                "service": "pi_command_server",
-                "timestamp": datetime.now().isoformat()
-            })
-            return
-
-        if self._is_command_path():
-            self._write_json(200, {
-                "ok": True,
-                "message": "pi command server running",
-                "usage": "POST /command with plain text, JSON {command}, or form command=..."
-            })
-            return
-
-        self.send_response(404)
-        self.end_headers()
 
     def do_POST(self):
         """Handle POST /command from ESP32."""
-        if self._is_command_path():
+        if self.path == "/command":
             length = int(self.headers.get('Content-Length', 0))
-            raw_body = self.rfile.read(length).decode('utf-8').strip()
-            content_type = self.headers.get('Content-Type', '')
-            body = parse_command_from_request(raw_body, content_type)
+            body = self.rfile.read(length).decode('utf-8').strip()
 
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"\n{'='*45}")
             print(f"[{timestamp}] Message from ESP32!")
-            print(f"[Path] {self.path}")
-            print(f"[Content-Type] {content_type or 'unknown'}")
-            print(f"[Raw] {raw_body}")
             print(f"[Command] {body}")
             print(f"{'='*45}")
 
-            if not body:
-                self._write_json(400, {
-                    "ok": False,
-                    "error": "empty command"
-                })
-                return
+            # Send OK back to ESP32
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
 
-            # Handle camera control command, otherwise speak incoming text.
-            speak(body)
-
-            self._write_json(200, {
-                "ok": True,
-                "received": body,
-                "spoken": body
-            })
+            # Speak the command
+            if body:
+                speak(body)
         else:
             self.send_response(404)
             self.end_headers()
@@ -210,7 +95,6 @@ def main():
     print("=" * 55)
     print(f"\n✅ Pi IP Address : {pi_ip}")
     print(f"✅ Listening on  : http://{pi_ip}:{PORT}/command")
-    print(f"✅ Health check  : http://{pi_ip}:{PORT}/health")
     print(f"\n👉 Tell your friend to set in ESP32 code:")
     print(f'     #define PI_IP   "{pi_ip}"')
     print(f'     #define PI_PORT  {PORT}')
