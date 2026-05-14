@@ -12,6 +12,8 @@ Flow:
 import subprocess
 import sys
 import json
+import os
+from urllib.parse import parse_qs
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -19,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 # CONFIGURATION
 # ─────────────────────────────────────────
 HOST = "0.0.0.0"   # Listen on all network interfaces
-PORT = 5000         # Must match PI_PORT in ESP32 code
+PORT = int(os.getenv("PI_COMMAND_PORT", "5000"))  # Must match PI_PORT in ESP32 code
 CAMERA_SERVICE = "pi-camera"
 
 # espeak voice settings
@@ -127,15 +129,58 @@ def handle_camera_command(command_text):
     return None, None
 
 
+def parse_command_from_request(raw_body, content_type):
+    """Extract command text from JSON, form, or plain text payload."""
+    body = (raw_body or "").strip()
+    if not body:
+        return ""
+
+    ctype = (content_type or "").lower()
+
+    if "application/json" in ctype:
+        try:
+            payload = json.loads(body)
+            if isinstance(payload, dict):
+                for key in ("command", "message", "text", "cmd"):
+                    value = payload.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+            if isinstance(payload, str):
+                return payload.strip()
+        except Exception:
+            return body
+
+    if "application/x-www-form-urlencoded" in ctype:
+        form = parse_qs(body)
+        for key in ("command", "message", "text", "cmd"):
+            values = form.get(key)
+            if values and values[0].strip():
+                return values[0].strip()
+        return body
+
+    return body
+
+
 class CommandHandler(BaseHTTPRequestHandler):
+
+    def _is_command_path(self):
+        return self.path in {"/", "/command", "/message", "/speak"}
 
     def _write_json(self, status_code, payload):
         body = json.dumps(payload).encode('utf-8')
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
 
     def do_GET(self):
         """Health endpoint for quick connectivity tests from ESP32/Pi."""
@@ -149,34 +194,56 @@ class CommandHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if self._is_command_path():
+            self._write_json(200, {
+                "ok": True,
+                "message": "pi command server running",
+                "usage": "POST /command with plain text, JSON {command}, or form command=..."
+            })
+            return
+
         self.send_response(404)
         self.end_headers()
 
     def do_POST(self):
         """Handle POST /command from ESP32."""
-        if self.path == "/command":
+        if self._is_command_path():
             length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(length).decode('utf-8').strip()
+            raw_body = self.rfile.read(length).decode('utf-8').strip()
+            content_type = self.headers.get('Content-Type', '')
+            body = parse_command_from_request(raw_body, content_type)
 
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"\n{'='*45}")
             print(f"[{timestamp}] Message from ESP32!")
+            print(f"[Path] {self.path}")
+            print(f"[Content-Type] {content_type or 'unknown'}")
+            print(f"[Raw] {raw_body}")
             print(f"[Command] {body}")
             print(f"{'='*45}")
 
-            # Send OK back to ESP32
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"OK")
+            if not body:
+                self._write_json(400, {
+                    "ok": False,
+                    "error": "empty command"
+                })
+                return
 
             # Handle camera control command, otherwise speak incoming text.
-            if body:
-                camera_ok, camera_message = handle_camera_command(body)
-                if camera_ok is None:
-                    speak(body)
-                else:
-                    print(f"[Camera] {camera_message}")
-                    speak(camera_message)
+            camera_ok, camera_message = handle_camera_command(body)
+            spoken_text = body
+            if camera_ok is None:
+                speak(body)
+            else:
+                print(f"[Camera] {camera_message}")
+                spoken_text = camera_message
+                speak(camera_message)
+
+            self._write_json(200, {
+                "ok": True,
+                "received": body,
+                "spoken": spoken_text
+            })
         else:
             self.send_response(404)
             self.end_headers()
