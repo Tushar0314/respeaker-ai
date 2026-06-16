@@ -31,6 +31,17 @@ VOLUME = 150    # Volume (0-200)
 # ─────────────────────────────────────────
 
 
+def set_audio_output_to_jack():
+    """Force the Pi's audio output to the 3.5mm jack."""
+    try:
+        subprocess.run(['amixer', 'cset', 'numid=3', '1'], check=True, capture_output=True, text=True)
+        LOGGER.info("audio output set to 3.5mm jack")
+    except FileNotFoundError:
+        LOGGER.warning("amixer not installed; cannot force jack output")
+    except Exception as e:
+        LOGGER.warning("could not set audio output to jack: %s", e)
+
+
 def setup_logging():
     """Configure console and file logging for the server."""
     logger = logging.getLogger("pi_command_server")
@@ -123,6 +134,7 @@ def get_pi_ip():
 
 
 def main():
+    set_audio_output_to_jack()
     pi_ip = get_pi_ip()
 
     LOGGER.info("=" * 55)
