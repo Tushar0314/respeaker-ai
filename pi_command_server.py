@@ -13,6 +13,7 @@ import subprocess
 import sys
 import logging
 import time
+import re
 from pathlib import Path
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -33,7 +34,7 @@ VOLUME = 150    # Volume (0-200)
 
 
 def set_audio_output_to_jack():
-    """Force the Pi's audio output to the 3.5mm jack."""
+    """Force the Pi's audio output to the 3.5mm jack as a fallback."""
     for attempt in range(1, 4):
         try:
             result = subprocess.run(
@@ -56,6 +57,77 @@ def set_audio_output_to_jack():
             time.sleep(0.5)
 
     return False
+
+
+def _parse_aplay_devices(aplay_output):
+    """Parse `aplay -l` output into a list of ALSA device records."""
+    devices = []
+    pattern = re.compile(r"card\s+(\d+):\s+(.+?)\s+\[(.+?)\],\s+device\s+(\d+):\s+(.+)")
+
+    for line in aplay_output.splitlines():
+        match = pattern.search(line)
+        if not match:
+            continue
+        card_number = match.group(1)
+        card_short_name = match.group(2).strip()
+        card_description = match.group(3).strip()
+        device_number = match.group(4)
+        device_description = match.group(5).strip()
+        devices.append({
+            "card": card_number,
+            "device": device_number,
+            "card_short_name": card_short_name,
+            "card_description": card_description,
+            "device_description": device_description,
+        })
+
+    return devices
+
+
+def _score_playback_device(device):
+    """Prefer USB and jack/analog devices, avoid HDMI/monitor audio."""
+    haystack = " ".join([
+        device["card_short_name"],
+        device["card_description"],
+        device["device_description"],
+    ]).lower()
+
+    if any(keyword in haystack for keyword in ["usb", "speaker", "jbl", "seeed", "respeaker"]):
+        return 3
+    if any(keyword in haystack for keyword in ["headphone", "headphones", "analog", "audio"]):
+        return 2
+    if any(keyword in haystack for keyword in ["hdmi", "monitor"]):
+        return 0
+    return 1
+
+
+def select_speaker_device():
+    """Return the best ALSA playback device for speech, preferring USB or jack output."""
+    try:
+        result = subprocess.run(['aplay', '-l'], check=True, capture_output=True, text=True)
+    except FileNotFoundError:
+        LOGGER.warning("aplay not installed; cannot inspect playback devices")
+        return None
+    except Exception as e:
+        LOGGER.warning("could not list playback devices: %s", e)
+        return None
+
+    devices = _parse_aplay_devices(result.stdout)
+    if not devices:
+        LOGGER.warning("no playback devices found in `aplay -l` output")
+        return None
+
+    ranked_devices = sorted(devices, key=_score_playback_device, reverse=True)
+    chosen = ranked_devices[0]
+    chosen_device = f"plughw:{chosen['card']},{chosen['device']}"
+    LOGGER.info(
+        "selected playback device: %s (%s / %s / %s)",
+        chosen_device,
+        chosen["card_short_name"],
+        chosen["card_description"],
+        chosen["device_description"],
+    )
+    return chosen_device
 
 
 def log_audio_status(stage):
@@ -95,6 +167,48 @@ def log_audio_status(stage):
         LOGGER.warning("could not list playback devices: %s", e)
 
 
+def speak_via_device(text, device):
+    """Speak text by piping espeak output into a specific ALSA playback device."""
+    espeak_cmd = [
+        'espeak', '--stdout',
+        '-v', VOICE,
+        '-s', str(SPEED),
+        '-p', str(PITCH),
+        '-a', str(VOLUME),
+        text,
+    ]
+    aplay_cmd = ['aplay', '-q', '-D', device]
+
+    LOGGER.info("speech route: %s -> %s", ' '.join(espeak_cmd[:-1] + ['<text>']), ' '.join(aplay_cmd))
+
+    espeak_process = subprocess.Popen(espeak_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        aplay_process = subprocess.Popen(aplay_cmd, stdin=espeak_process.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        espeak_process.stdout.close()
+        aplay_stdout, aplay_stderr = aplay_process.communicate()
+        espeak_stderr = espeak_process.stderr.read() if espeak_process.stderr else b''
+        espeak_return = espeak_process.wait()
+
+        if espeak_return != 0:
+            LOGGER.warning("espeak exited with code %s", espeak_return)
+        if aplay_process.returncode != 0:
+            LOGGER.warning("aplay exited with code %s", aplay_process.returncode)
+        if espeak_stderr:
+            LOGGER.info("espeak stderr: %s", espeak_stderr.decode('utf-8', errors='replace').strip())
+        if aplay_stdout:
+            LOGGER.info("aplay stdout: %s", aplay_stdout.decode('utf-8', errors='replace').strip())
+        if aplay_stderr:
+            LOGGER.info("aplay stderr: %s", aplay_stderr.decode('utf-8', errors='replace').strip())
+
+        return aplay_process.returncode == 0 and espeak_return == 0
+    finally:
+        try:
+            if espeak_process.stderr:
+                espeak_process.stderr.close()
+        except Exception:
+            pass
+
+
 def setup_logging():
     """Configure console and file logging for the server."""
     logger = logging.getLogger("pi_command_server")
@@ -124,21 +238,33 @@ def speak(text):
     LOGGER.info('[%s] SPEAKING START: "%s"', timestamp, text)
     start_time = time.time()
     try:
-        if not set_audio_output_to_jack():
-            LOGGER.warning("continuing to speak even though jack output could not be confirmed")
-        result = subprocess.run(
-            ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), text],
-            check=True,
-            capture_output=True,
-            text=True
-        )
+        log_audio_status("before speech")
+        selected_device = select_speaker_device()
+        if selected_device is None:
+            LOGGER.warning("no explicit playback device selected; falling back to `amixer` jack route")
+            if not set_audio_output_to_jack():
+                LOGGER.warning("continuing to speak even though jack output could not be confirmed")
+            result = subprocess.run(
+                ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), text],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            elapsed = time.time() - start_time
+            LOGGER.info('[%s] SPEAKING END: completed in %.2fs', timestamp, elapsed)
+            LOGGER.info("speech command return code: %s", result.returncode)
+            if result.stdout:
+                LOGGER.info("espeak stdout: %s", result.stdout.strip())
+            if result.stderr:
+                LOGGER.info("espeak stderr: %s", result.stderr.strip())
+            return
+
+        success = speak_via_device(text, selected_device)
         elapsed = time.time() - start_time
         LOGGER.info('[%s] SPEAKING END: completed in %.2fs', timestamp, elapsed)
-        LOGGER.info("speech command return code: %s", result.returncode)
-        if result.stdout:
-            LOGGER.info("espeak stdout: %s", result.stdout.strip())
-        if result.stderr:
-            LOGGER.info("espeak stderr: %s", result.stderr.strip())
+        LOGGER.info("speech completed via explicit playback device: %s", selected_device)
+        if not success:
+            LOGGER.warning("speech may not have played cleanly on %s", selected_device)
     except FileNotFoundError:
         LOGGER.error("espeak not installed. Run: sudo apt-get install espeak")
     except Exception as e:
@@ -198,7 +324,6 @@ def get_pi_ip():
 
 
 def main():
-    set_audio_output_to_jack()
     log_audio_status("startup")
     pi_ip = get_pi_ip()
 
