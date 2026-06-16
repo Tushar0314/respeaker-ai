@@ -21,8 +21,8 @@ from socketserver import ThreadingMixIn
 import json
 
 # ====== CONFIGURATION ======
-CAMERA_RESOLUTION = (1280, 720)  # Lower latency than full HD
-CAMERA_FRAMERATE = 20
+CAMERA_RESOLUTION = (640, 480)  # Prioritize real-time over sharpness
+CAMERA_FRAMERATE = 15
 CAMERA_ROTATION = 0  # 0, 90, 180, 270
 
 # Server settings
@@ -30,7 +30,7 @@ STREAM_PORT = 8080  # Port for local streaming
 REMOTE_SERVER = "http://echo.cooperativepaddling.com/"
 
 # Video quality
-JPEG_QUALITY = 70  # Lower is faster/smaller; tune upward if needed
+JPEG_QUALITY = 60  # Lower is faster/smaller; tune upward if needed
 
 print("=" * 70)
 print("📷 RASPBERRY PI CAMERA STREAMER")
@@ -134,7 +134,7 @@ class StreamingHandler(BaseHTTPRequestHandler):
                     <h1>📷 Raspberry Pi Camera Stream</h1>
                     <div class="info">
                         <p class="status">🟢 LIVE</p>
-                        <p>Camera Module 3 • Pi 5 • 1280x720 @ 20fps</p>
+                        <p>Camera Module 3 • Pi 5 • 640x480 @ 15fps</p>
                     </div>
                     <img src="/stream" alt="Camera Stream">
                     <div class="info">
