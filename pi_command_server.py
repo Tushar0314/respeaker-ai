@@ -30,33 +30,9 @@ VOICE  = "en"   # en, en-us, en-gb
 SPEED  = 150    # Words per minute (80-450)
 PITCH  = 50     # Pitch (0-99)
 VOLUME = 150    # Volume (0-200)
+USB_SPEAKER_KEYWORDS = ["usb", "respeaker", "seeed", "jbl", "headset", "speaker"]
+MONITOR_KEYWORDS = ["hdmi", "monitor", "vc4"]
 # ─────────────────────────────────────────
-
-
-def set_audio_output_to_jack():
-    """Force the Pi's audio output to the 3.5mm jack as a fallback."""
-    for attempt in range(1, 4):
-        try:
-            result = subprocess.run(
-                ['amixer', 'cset', 'numid=3', '1'],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-            LOGGER.info("audio output set to 3.5mm jack (attempt %s)", attempt)
-            if result.stdout:
-                LOGGER.info("amixer stdout: %s", result.stdout.strip())
-            if result.stderr:
-                LOGGER.info("amixer stderr: %s", result.stderr.strip())
-            return True
-        except FileNotFoundError:
-            LOGGER.warning("amixer not installed; cannot force jack output")
-            return False
-        except Exception as e:
-            LOGGER.warning("could not set audio output to jack (attempt %s): %s", attempt, e)
-            time.sleep(0.5)
-
-    return False
 
 
 def _parse_aplay_devices(aplay_output):
@@ -85,24 +61,22 @@ def _parse_aplay_devices(aplay_output):
 
 
 def _score_playback_device(device):
-    """Prefer USB and jack/analog devices, avoid HDMI/monitor audio."""
+    """Prefer USB speaker devices and strongly de-prioritize monitor outputs."""
     haystack = " ".join([
         device["card_short_name"],
         device["card_description"],
         device["device_description"],
     ]).lower()
 
-    if any(keyword in haystack for keyword in ["usb", "speaker", "jbl", "seeed", "respeaker"]):
+    if any(keyword in haystack for keyword in USB_SPEAKER_KEYWORDS):
         return 3
-    if any(keyword in haystack for keyword in ["headphone", "headphones", "analog", "audio"]):
-        return 2
-    if any(keyword in haystack for keyword in ["hdmi", "monitor"]):
+    if any(keyword in haystack for keyword in MONITOR_KEYWORDS):
         return 0
     return 1
 
 
 def select_speaker_device():
-    """Return the best ALSA playback device for speech, preferring USB or jack output."""
+    """Return a USB speaker ALSA device and refuse monitor/HDMI-only routing."""
     try:
         result = subprocess.run(['aplay', '-l'], check=True, capture_output=True, text=True)
     except FileNotFoundError:
@@ -118,7 +92,32 @@ def select_speaker_device():
         return None
 
     ranked_devices = sorted(devices, key=_score_playback_device, reverse=True)
-    chosen = ranked_devices[0]
+    usb_candidates = []
+    for device in ranked_devices:
+        haystack = " ".join([
+            device["card_short_name"],
+            device["card_description"],
+            device["device_description"],
+        ]).lower()
+        if any(keyword in haystack for keyword in MONITOR_KEYWORDS):
+            continue
+        if any(keyword in haystack for keyword in USB_SPEAKER_KEYWORDS):
+            usb_candidates.append(device)
+
+    if not usb_candidates:
+        LOGGER.error("no USB speaker device found; refusing to use monitor/HDMI output")
+        for device in ranked_devices:
+            LOGGER.info(
+                "available playback device: card=%s device=%s (%s / %s / %s)",
+                device["card"],
+                device["device"],
+                device["card_short_name"],
+                device["card_description"],
+                device["device_description"],
+            )
+        return None
+
+    chosen = usb_candidates[0]
     chosen_device = f"plughw:{chosen['card']},{chosen['device']}"
     LOGGER.info(
         "selected playback device: %s (%s / %s / %s)",
@@ -131,24 +130,8 @@ def select_speaker_device():
 
 
 def log_audio_status(stage):
-    """Log the current audio routing and speaker device info."""
+    """Log speaker device info before startup/speech."""
     LOGGER.info("audio status check: %s", stage)
-
-    try:
-        route = subprocess.run(
-            ['amixer', 'cget', 'numid=3'],
-            check=False,
-            capture_output=True,
-            text=True
-        )
-        if route.stdout:
-            LOGGER.info("amixer route: %s", route.stdout.strip())
-        if route.stderr:
-            LOGGER.info("amixer route stderr: %s", route.stderr.strip())
-    except FileNotFoundError:
-        LOGGER.warning("amixer not installed; cannot read audio route")
-    except Exception as e:
-        LOGGER.warning("could not read audio route: %s", e)
 
     try:
         devices = subprocess.run(
@@ -241,22 +224,8 @@ def speak(text):
         log_audio_status("before speech")
         selected_device = select_speaker_device()
         if selected_device is None:
-            LOGGER.warning("no explicit playback device selected; falling back to `amixer` jack route")
-            if not set_audio_output_to_jack():
-                LOGGER.warning("continuing to speak even though jack output could not be confirmed")
-            result = subprocess.run(
-                ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), text],
-                check=True,
-                capture_output=True,
-                text=True
-            )
             elapsed = time.time() - start_time
-            LOGGER.info('[%s] SPEAKING END: completed in %.2fs', timestamp, elapsed)
-            LOGGER.info("speech command return code: %s", result.returncode)
-            if result.stdout:
-                LOGGER.info("espeak stdout: %s", result.stdout.strip())
-            if result.stderr:
-                LOGGER.info("espeak stderr: %s", result.stderr.strip())
+            LOGGER.error('[%s] SPEAKING ABORTED: no USB speaker found after %.2fs', timestamp, elapsed)
             return
 
         success = speak_via_device(text, selected_device)
