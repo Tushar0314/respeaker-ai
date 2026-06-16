@@ -12,6 +12,7 @@ Flow:
 import subprocess
 import sys
 import logging
+import time
 from pathlib import Path
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -33,13 +34,24 @@ VOLUME = 150    # Volume (0-200)
 
 def set_audio_output_to_jack():
     """Force the Pi's audio output to the 3.5mm jack."""
-    try:
-        subprocess.run(['amixer', 'cset', 'numid=3', '1'], check=True, capture_output=True, text=True)
-        LOGGER.info("audio output set to 3.5mm jack")
-    except FileNotFoundError:
-        LOGGER.warning("amixer not installed; cannot force jack output")
-    except Exception as e:
-        LOGGER.warning("could not set audio output to jack: %s", e)
+    for attempt in range(1, 4):
+        try:
+            subprocess.run(
+                ['amixer', 'cset', 'numid=3', '1'],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            LOGGER.info("audio output set to 3.5mm jack (attempt %s)", attempt)
+            return True
+        except FileNotFoundError:
+            LOGGER.warning("amixer not installed; cannot force jack output")
+            return False
+        except Exception as e:
+            LOGGER.warning("could not set audio output to jack (attempt %s): %s", attempt, e)
+            time.sleep(0.5)
+
+    return False
 
 
 def setup_logging():
@@ -70,6 +82,8 @@ def speak(text):
     timestamp = datetime.now().strftime("%H:%M:%S")
     LOGGER.info('[%s] SPEAKING: "%s"', timestamp, text)
     try:
+        if not set_audio_output_to_jack():
+            LOGGER.warning("continuing to speak even though jack output could not be confirmed")
         subprocess.run(
             ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), text],
             check=True
