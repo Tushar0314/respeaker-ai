@@ -21,8 +21,8 @@ from socketserver import ThreadingMixIn
 import json
 
 # ====== CONFIGURATION ======
-CAMERA_RESOLUTION = (1920, 1080)  # Full HD
-CAMERA_FRAMERATE = 30
+CAMERA_RESOLUTION = (1280, 720)  # Lower latency than full HD
+CAMERA_FRAMERATE = 20
 CAMERA_ROTATION = 0  # 0, 90, 180, 270
 
 # Server settings
@@ -30,7 +30,7 @@ STREAM_PORT = 8080  # Port for local streaming
 REMOTE_SERVER = "http://echo.cooperativepaddling.com/"
 
 # Video quality
-JPEG_QUALITY = 85  # 1-100, higher = better quality but larger file
+JPEG_QUALITY = 70  # Lower is faster/smaller; tune upward if needed
 
 print("=" * 70)
 print("📷 RASPBERRY PI CAMERA STREAMER")
@@ -134,7 +134,7 @@ class StreamingHandler(BaseHTTPRequestHandler):
                     <h1>📷 Raspberry Pi Camera Stream</h1>
                     <div class="info">
                         <p class="status">🟢 LIVE</p>
-                        <p>Camera Module 3 • Pi 5 • 1920x1080 @ 30fps</p>
+                        <p>Camera Module 3 • Pi 5 • 1280x720 @ 20fps</p>
                     </div>
                     <img src="/stream" alt="Camera Stream">
                     <div class="info">
@@ -270,13 +270,14 @@ def start_http_stream():
     
     print(f"[Camera] Resolution: {CAMERA_RESOLUTION[0]}x{CAMERA_RESOLUTION[1]}")
     print(f"[Camera] Framerate: {CAMERA_FRAMERATE} fps")
+    print(f"[Camera] JPEG quality: {JPEG_QUALITY}")
     print(f"[Camera] Rotation: {CAMERA_ROTATION}°")
     
     # Create output for streaming
     output = StreamingOutput()
     
     # Start camera with MJPEG encoder
-    picam2.start_recording(JpegEncoder(), FileOutput(output))
+    picam2.start_recording(JpegEncoder(q=JPEG_QUALITY), FileOutput(output))
     
     print(f"\n[✓] Camera started successfully!")
     print(f"\n[Server] Starting HTTP streaming server...")
