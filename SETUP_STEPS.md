@@ -121,7 +121,7 @@ On the server, run:
 sudo cat /etc/nginx/sites-available/default
 ```
 
-**Make sure it has this section and keep buffering disabled for any live stream route:**
+**Make sure it has this section:**
 ```nginx
 location /stream {
     proxy_pass http://localhost:8080/stream;
@@ -132,8 +132,6 @@ location /stream {
     chunked_transfer_encoding off;
 }
 ```
-
-If you expose a different stream path, apply the same no-buffering settings there too. Any buffering in nginx can add several seconds of delay even when the Pi is capturing fresh frames.
 
 **If it's missing or wrong**, create the config:
 ```bash
