@@ -36,13 +36,17 @@ def set_audio_output_to_jack():
     """Force the Pi's audio output to the 3.5mm jack."""
     for attempt in range(1, 4):
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ['amixer', 'cset', 'numid=3', '1'],
                 check=True,
                 capture_output=True,
                 text=True
             )
             LOGGER.info("audio output set to 3.5mm jack (attempt %s)", attempt)
+            if result.stdout:
+                LOGGER.info("amixer stdout: %s", result.stdout.strip())
+            if result.stderr:
+                LOGGER.info("amixer stderr: %s", result.stderr.strip())
             return True
         except FileNotFoundError:
             LOGGER.warning("amixer not installed; cannot force jack output")
@@ -52,6 +56,43 @@ def set_audio_output_to_jack():
             time.sleep(0.5)
 
     return False
+
+
+def log_audio_status(stage):
+    """Log the current audio routing and speaker device info."""
+    LOGGER.info("audio status check: %s", stage)
+
+    try:
+        route = subprocess.run(
+            ['amixer', 'cget', 'numid=3'],
+            check=False,
+            capture_output=True,
+            text=True
+        )
+        if route.stdout:
+            LOGGER.info("amixer route: %s", route.stdout.strip())
+        if route.stderr:
+            LOGGER.info("amixer route stderr: %s", route.stderr.strip())
+    except FileNotFoundError:
+        LOGGER.warning("amixer not installed; cannot read audio route")
+    except Exception as e:
+        LOGGER.warning("could not read audio route: %s", e)
+
+    try:
+        devices = subprocess.run(
+            ['aplay', '-l'],
+            check=False,
+            capture_output=True,
+            text=True
+        )
+        if devices.stdout:
+            LOGGER.info("aplay -l output:\n%s", devices.stdout.strip())
+        if devices.stderr:
+            LOGGER.info("aplay -l stderr: %s", devices.stderr.strip())
+    except FileNotFoundError:
+        LOGGER.warning("aplay not installed; cannot list playback devices")
+    except Exception as e:
+        LOGGER.warning("could not list playback devices: %s", e)
 
 
 def setup_logging():
@@ -80,15 +121,24 @@ LOGGER = setup_logging()
 def speak(text):
     """Speak text using espeak."""
     timestamp = datetime.now().strftime("%H:%M:%S")
-    LOGGER.info('[%s] SPEAKING: "%s"', timestamp, text)
+    LOGGER.info('[%s] SPEAKING START: "%s"', timestamp, text)
+    start_time = time.time()
     try:
         if not set_audio_output_to_jack():
             LOGGER.warning("continuing to speak even though jack output could not be confirmed")
-        subprocess.run(
+        result = subprocess.run(
             ['espeak', '-v', VOICE, '-s', str(SPEED), '-p', str(PITCH), '-a', str(VOLUME), text],
-            check=True
+            check=True,
+            capture_output=True,
+            text=True
         )
-        LOGGER.info('[%s] speech completed', timestamp)
+        elapsed = time.time() - start_time
+        LOGGER.info('[%s] SPEAKING END: completed in %.2fs', timestamp, elapsed)
+        LOGGER.info("speech command return code: %s", result.returncode)
+        if result.stdout:
+            LOGGER.info("espeak stdout: %s", result.stdout.strip())
+        if result.stderr:
+            LOGGER.info("espeak stderr: %s", result.stderr.strip())
     except FileNotFoundError:
         LOGGER.error("espeak not installed. Run: sudo apt-get install espeak")
     except Exception as e:
@@ -149,6 +199,7 @@ def get_pi_ip():
 
 def main():
     set_audio_output_to_jack()
+    log_audio_status("startup")
     pi_ip = get_pi_ip()
 
     LOGGER.info("=" * 55)
